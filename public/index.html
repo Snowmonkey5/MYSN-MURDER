@@ -55,64 +55,417 @@ canvas{display:block;width:100%;height:100%}
     <h1>MYSN MURDER</h1>
     <p class="sub">No computer needed</p>
     <input id="name" placeholder="Your name" maxlength="12"/>
-    <button type="button" id="btnPlay">Create &amp; Play</button>
+    <button type="button" id="btnPlay">Create & Play</button>
     <button type="button" id="btnHost" class="host">Create as Host Only</button>
     <div class="row" style="margin-top:12px">
       <input id="codeIn" placeholder="CODE" maxlength="4" style="width:110px;text-transform:uppercase;letter-spacing:3px"/>
       <button type="button" id="btnJoin" class="sec" style="width:auto;padding:14px 20px">Join</button>
     </div>
+    <p class="sub" style="margin-top:16px;font-size:12px"><a href="/" style="color:#1C9455">Refresh</a></p>
   </div>
+
   <div id="lobby" class="screen">
-    <p style="color:#8b949e">Room Code</p>
-    <div class="code" id="codeOut">----</div>
-    <p class="sub" id="share">Share this code</p>
+    <h1>Lobby</h1>
+    <p class="code" id="codeOut">----</p>
+    <p class="sub" id="share"></p>
     <div id="players"></div>
     <div id="hostUI" class="hidden">
-      <div class="slider"><label>Bots</label><span id="botL">3</span><input type="range" id="botS" min="0" max="8" value="3"/></div>
+      <div class="slider"><label>Bots</label><span id="botL">0</span><input type="range" id="botS" min="0" max="8" value="0"/></div>
       <div class="slider"><label>Impostors</label><span id="impL">1</span><input type="range" id="impS" min="1" max="3" value="1"/></div>
-      <button type="button" id="btnStart" style="margin-top:12px">Start Game</button>
+      <button type="button" id="btnStart">Start Game</button>
     </div>
     <p class="sub" id="wait">Waiting for host...</p>
-    <p class="sub hidden" id="hostNote" style="color:#1C9455">You are Host Only</p>
+    <p class="sub hidden" id="hostNote">You are Host Only — you manage the room, you do not play.</p>
   </div>
+
   <div id="game" class="screen">
     <div id="gameWrap">
       <canvas id="cv"></canvas>
       <div id="hud">
-        <div class="box"><strong style="color:#1C9455">Tasks</strong><div id="tasks">—</div></div>
-        <div class="box" id="roleB">Role: ???</div>
+        <div class="box" id="roleBox">Role: ?</div>
+        <div class="box" id="taskBox">Tasks: 0</div>
       </div>
       <div id="mobile">
         <div id="joy"><div id="joyBase"><div id="joyKnob"></div></div></div>
         <div id="acts">
-          <button type="button" class="abtn" id="k">KILL</button>
-          <button type="button" class="abtn" id="r">REPORT</button>
-          <button type="button" class="abtn" id="u">USE</button>
-          <button type="button" class="abtn" id="m">MEET</button>
+          <button class="abtn" id="k">KILL</button>
+          <button class="abtn" id="r">REPORT</button>
+          <button class="abtn" id="u">USE</button>
+          <button class="abtn" id="m">MEET</button>
         </div>
       </div>
-      <div id="meet">
-        <h2 id="meetR">Meeting</h2>
-        <p id="meetT" style="color:#8b949e">...</p>
-        <div id="votes"></div>
-        <button type="button" id="btnSkip" class="sec" style="width:auto">Skip</button>
-      </div>
-      <div id="role">
-        <p style="color:#8b949e">You are the</p>
-        <div id="roleT" style="font-size:2.5rem;font-weight:900;margin:12px 0">CREWMATE</div>
-        <p id="roleD" style="color:#8b949e">...</p>
-        <button type="button" id="btnRoleOk" style="margin-top:24px;width:auto">Got it</button>
-      </div>
-      <div id="toast"></div>
     </div>
   </div>
+
+  <div id="role" class="">
+    <h1 id="roleT">Your Role</h1>
+    <p class="sub" id="roleD"></p>
+    <button type="button" id="btnRoleOk">OK</button>
+  </div>
+
+  <div id="meet">
+    <h1>Meeting</h1>
+    <p class="sub">Vote who is the impostor</p>
+    <div id="votes"></div>
+    <button type="button" id="btnSkip" class="sec">Skip</button>
+  </div>
+
   <div id="end" class="screen">
-    <h1 id="endT">Victory</h1>
+    <h1 id="endT">Game Over</h1>
     <p class="sub" id="endS"></p>
     <div id="endP" style="margin:16px 0"></div>
     <button type="button" id="btnAgain">Play Again</button>
   </div>
 </div>
-<script src="game.js"></script>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  function $(id){return document.getElementById(id)}
+  function show(id){
+    ['menu','lobby','game','end'].forEach(function(s){
+      var el=$(s); if(el) el.classList.toggle('active', s===id);
+    });
+  }
+  function toast(msg, col){
+    var t=$('toast');
+    if(!t){ alert(msg); return; }
+    t.textContent=msg;
+    t.style.background=col||'#1C9455';
+    t.style.display='block';
+    clearTimeout(t._tm);
+    t._tm=setTimeout(function(){t.style.display='none'},5000);
+  }
+
+  var ws=null, myId=null, myRole=null, myTasks=[], state=null;
+  var isHost=false, hostOnly=false, keys={}, cv, ctx, anim=null;
+  var mobile=false, joy={a:false,dx:0,dy:0}, lastMv=0;
+  var params=new URLSearchParams(location.search);
+  var urlCode=(params.get('room')||'').toUpperCase();
+
+  function send(type, data){
+    if(ws && ws.readyState===1) ws.send(JSON.stringify({type:type, data:data||{}}));
+  }
+
+  function connect(code, asHostOnly){
+    hostOnly=!!asHostOnly;
+    toast('Connecting to /ws/'+code+' ...');
+    var proto=location.protocol==='https:'?'wss':'ws';
+    var url=proto+'://'+location.host+'/ws/'+code;
+    try{ ws=new WebSocket(url); }catch(e){ toast('WS create failed: '+e.message,'#da3633'); return; }
+
+    ws.onopen=function(){
+      var n=($('name')&&$('name').value.trim())||(asHostOnly?'Host':'Player');
+      send('join',{name:n, code:code, hostOnly:!!asHostOnly});
+      toast('Connected! Joining...');
+    };
+    ws.onmessage=function(e){
+      var msg; try{msg=JSON.parse(e.data)}catch(err){ return; }
+      onMsg(msg);
+    };
+    ws.onerror=function(){
+      toast('WebSocket error','#da3633');
+    };
+    ws.onclose=function(ev){
+      toast('Closed code='+ev.code+' '+ (ev.reason||''),'#da3633');
+    };
+  }
+
+  function onMsg(msg){
+    var t=msg.type, d=msg.data;
+    if(t==='joined'){
+      myId=d.id; isHost=d.isHost; hostOnly=!!d.hostOnly; state=d.state;
+      $('codeOut').textContent=d.state.code;
+      $('share').textContent='Share: '+location.origin+'?room='+d.state.code;
+      if(isHost){ $('hostUI').classList.remove('hidden'); $('wait').classList.add('hidden'); }
+      else { $('hostUI').classList.add('hidden'); $('wait').classList.remove('hidden'); }
+      if(hostOnly) $('hostNote').classList.remove('hidden');
+      else $('hostNote').classList.add('hidden');
+      fillLobby(d.state);
+      show('lobby');
+      toast('In lobby!');
+      try{history.replaceState(null,'','?room='+d.state.code)}catch(e){}
+    }
+    else if(t==='state'){
+      state=d;
+      if(d.phase==='lobby') fillLobby(d);
+      if(d.phase==='playing'){
+        show('game');
+        if(!anim){ initCv(); detectMob(); anim=requestAnimationFrame(loop); }
+      }
+      if(d.phase==='meeting'){
+        $('meet').classList.add('on');
+        var box=$('votes'); box.innerHTML='';
+        (d.players||[]).filter(function(p){return p.alive&&!p.hostOnly}).forEach(function(p){
+          var b=document.createElement('button'); b.className='vbtn';
+          b.innerHTML='<span style="color:'+p.color+'">●</span> '+p.name+(p.isBot?' 🤖':'');
+          b.onclick=function(){
+            if(hostOnly)return;
+            document.querySelectorAll('.vbtn').forEach(function(x){x.classList.remove('sel')});
+            b.classList.add('sel');
+            send('vote',{targetId:p.id});
+            toast('Voted '+p.name);
+          };
+          box.appendChild(b);
+        });
+      } else {
+        $('meet').classList.remove('on');
+      }
+      if(d.phase==='ended'){
+        show('end');
+        $('endT').textContent=d.winner==='crew'?'Crewmates Win!':'Impostors Win!';
+        $('endS').textContent=d.reason||'';
+        var box=$('endP'); box.innerHTML='';
+        (d.players||[]).forEach(function(p){
+          var div=document.createElement('div');
+          div.style.margin='6px';
+          div.innerHTML='<span style="color:'+p.color+'">●</span> '+p.name+' — <b>'+(p.role||'?')+'</b>'+(p.isBot?' 🤖':'');
+          box.appendChild(div);
+        });
+      }
+    }
+    else if(t==='role'){
+      myRole=d.role; myTasks=d.tasks||[];
+      $('roleT').textContent=d.role==='impostor'?'You are the IMPOSTOR':'You are a CREWMATE';
+      $('roleD').textContent=d.role==='impostor'?'Kill the crew. Sabotage. Don\'t get caught.':'Complete tasks. Find the impostor.';
+      $('roleBox').textContent='Role: '+(d.role||'?');
+      $('role').classList.add('on');
+    }
+    else if(t==='error') { toast(d,'#da3633'); }
+  }
+
+  function fillLobby(st){
+    state=st; var c=$('players'); c.innerHTML='';
+    (st.players||[]).forEach(function(p){
+      var chip=document.createElement('div'); chip.className='chip';
+      var lab=p.name+(p.isBot?' 🤖':'')+(p.hostOnly?' (Host)':'');
+      chip.innerHTML='<div class="dot" style="background:'+(p.color||'#1C9455')+'"></div>'+lab;
+      c.appendChild(chip);
+    });
+  }
+
+  function code4(){
+    var ch='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s='';
+    for(var i=0;i<4;i++) s+=ch[Math.floor(Math.random()*ch.length)];
+    return s;
+  }
+
+  $('btnPlay').onclick=function(){ connect(code4(), false); };
+  $('btnHost').onclick=function(){ connect(code4(), true); };
+  $('btnJoin').onclick=function(){
+    var c=($('codeIn').value||'').trim().toUpperCase();
+    if(c.length!==4) return toast('Enter 4-letter code','#da3633');
+    connect(c, false);
+  };
+  if(urlCode.length===4) $('codeIn').value=urlCode;
+
+  $('botS').oninput=function(e){ $('botL').textContent=e.target.value; send('settings',{botCount:+e.target.value}); };
+  $('impS').oninput=function(e){ $('impL').textContent=e.target.value; send('settings',{impostors:+e.target.value}); };
+  $('btnStart').onclick=function(){ send('start'); };
+  $('btnRoleOk').onclick=function(){ $('role').classList.remove('on'); };
+  $('btnSkip').onclick=function(){ if(!hostOnly){ send('vote',{targetId:null}); toast('Skipped'); } };
+  $('btnAgain').onclick=function(){ location.href=location.pathname; };
+
+  function initCv(){
+    cv=$('cv'); ctx=cv.getContext('2d');
+    function resize(){
+      cv.width=cv.clientWidth*devicePixelRatio;
+      cv.height=cv.clientHeight*devicePixelRatio;
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    }
+    resize(); window.addEventListener('resize',resize);
+  }
+
+  function detectMob(){
+    mobile=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+    if(mobile && !hostOnly){
+      $('mobile').classList.add('on');
+      setupJoy(); setupAct();
+    }
+  }
+
+  window.addEventListener('keydown',function(e){ keys[e.key.toLowerCase()]=true; });
+  window.addEventListener('keyup',function(e){ keys[e.key.toLowerCase()]=false; });
+  window.addEventListener('keydown',function(e){
+    if(hostOnly)return;
+    if(e.key===' ' || e.key==='k') send('kill');
+    if(e.key==='r') send('report');
+    if(e.key==='e' || e.key==='u') send('use');
+    if(e.key==='m') send('meeting');
+  });
+
+  function setupJoy(){
+    var base=$('joyBase'), knob=$('joyKnob'), active=false, id=null;
+    function pos(e){
+      var t=e.touches?e.touches[0]:e;
+      var r=base.getBoundingClientRect();
+      var cx=r.left+r.width/2, cy=r.top+r.height/2;
+      var dx=t.clientX-cx, dy=t.clientY-cy;
+      var max=40, len=Math.hypot(dx,dy)||1;
+      if(len>max){ dx=dx/len*max; dy=dy/len*max; }
+      knob.style.transform='translate(calc(-50% + '+dx+'px), calc(-50% + '+dy+'px))';
+      joy.dx=dx/max; joy.dy=dy/max; joy.a=true;
+    }
+    function end(){
+      active=false; joy.a=false; joy.dx=0; joy.dy=0;
+      knob.style.transform='translate(-50%,-50%)';
+    }
+    base.addEventListener('touchstart',function(e){e.preventDefault(); active=true; pos(e);},{passive:false});
+    base.addEventListener('touchmove',function(e){e.preventDefault(); if(active) pos(e);},{passive:false});
+    base.addEventListener('touchend',end);
+    base.addEventListener('touchcancel',end);
+  }
+
+  function setupAct(){
+    $('k').onclick=function(){ if(!hostOnly) send('kill'); };
+    $('r').onclick=function(){ if(!hostOnly) send('report'); };
+    $('u').onclick=function(){ if(!hostOnly) send('use'); };
+    $('m').onclick=function(){ if(!hostOnly) send('meeting'); };
+  }
+
+  function loop(){
+    anim=requestAnimationFrame(loop);
+    tick();
+    draw();
+  }
+
+  function tick(){
+    if(!state||hostOnly||!myId)return;
+    var me=(state.players||[]).find(function(p){return p.id===myId});
+    if(!me||!me.alive)return;
+    var dx=0,dy=0,spd=3.2;
+    if(keys.w||keys.arrowup)dy-=1; if(keys.s||keys.arrowdown)dy+=1;
+    if(keys.a||keys.arrowleft)dx-=1; if(keys.d||keys.arrowright)dx+=1;
+    if(joy.a){dx+=joy.dx;dy+=joy.dy}
+    if(dx||dy){
+      var len=Math.hypot(dx,dy)||1;
+      me.x+=(dx/len)*spd; me.y+=(dy/len)*spd;
+      me.x=Math.max(20,Math.min(780,me.x)); me.y=Math.max(20,Math.min(580,me.y));
+      var now=Date.now();
+      if(now-lastMv>35){ send('move',{x:me.x,y:me.y}); lastMv=now; }
+    }
+  }
+
+  function shade(hex, pct){
+    hex=(hex||'#1C9455').replace('#','');
+    if(hex.length===3) hex=hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+    var r=parseInt(hex.substr(0,2),16), g=parseInt(hex.substr(2,2),16), b=parseInt(hex.substr(4,2),16);
+    r=Math.min(255,Math.max(0,Math.round(r*(1+pct))));
+    g=Math.min(255,Math.max(0,Math.round(g*(1+pct))));
+    b=Math.min(255,Math.max(0,Math.round(b*(1+pct))));
+    return 'rgb('+r+','+g+','+b+')';
+  }
+
+  function roundBody(cx, cy, w, h, r){
+    var x=cx-w/2, y=cy-h/2;
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y);
+    ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r);
+    ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h);
+    ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r);
+    ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath();
+  }
+
+  function drawCrewmate(x, y, color, isMe){
+    var body=color||'#1C9455';
+    var dark=shade(body,-0.28);
+    var light=shade(body,0.22);
+    // soft ground shadow
+    ctx.fillStyle='rgba(0,0,0,.28)';
+    ctx.beginPath(); ctx.ellipse(x, y+22, 16, 5, 0, 0, Math.PI*2); ctx.fill();
+    // backpack (behind)
+    ctx.fillStyle=dark;
+    roundBody(x-18, y+2, 10, 20, 4);
+    ctx.fill();
+    // main body with gradient (3D look)
+    var grd=ctx.createLinearGradient(x-14, y-18, x+14, y+18);
+    grd.addColorStop(0, light);
+    grd.addColorStop(0.4, body);
+    grd.addColorStop(1, dark);
+    ctx.fillStyle=grd;
+    roundBody(x, y, 28, 36, 12);
+    ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.35)';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    // legs
+    ctx.fillStyle=dark;
+    roundBody(x-7, y+20, 9, 12, 3);
+    ctx.fill();
+    roundBody(x+7, y+20, 9, 12, 3);
+    ctx.fill();
+    // visor glass
+    var vg=ctx.createLinearGradient(x-6, y-12, x+10, y+4);
+    vg.addColorStop(0, '#c8f0ff');
+    vg.addColorStop(0.35, '#5eb8e8');
+    vg.addColorStop(1, '#2a6a9a');
+    ctx.fillStyle=vg;
+    roundBody(x+2, y-5, 16, 14, 6);
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.45)';
+    ctx.lineWidth=1;
+    ctx.stroke();
+    // visor shine
+    ctx.fillStyle='rgba(255,255,255,.5)';
+    ctx.beginPath();
+    ctx.ellipse(x-1, y-8, 4, 2.5, -0.3, 0, Math.PI*2);
+    ctx.fill();
+    // self highlight
+    if(isMe){
+      ctx.strokeStyle='#1C9455';
+      ctx.lineWidth=2.5;
+      ctx.beginPath();
+      ctx.ellipse(x, y+2, 24, 28, 0, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
+
+  function draw(){
+    if(!ctx||!state)return;
+    var w=cv.clientWidth, h=cv.clientHeight;
+    ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,w,h);
+    var scale=Math.min(w/800,h/600), ox=(w-800*scale)/2, oy=(h-600*scale)/2;
+    ctx.save(); ctx.translate(ox,oy); ctx.scale(scale,scale);
+    var rooms=[
+      {x:40,y:40,w:220,h:160,c:'#1a2332',l:'Cafeteria'},
+      {x:290,y:40,w:220,h:130,c:'#1a2a1a',l:'Medbay'},
+      {x:540,y:40,w:220,h:160,c:'#2a1a1a',l:'Electrical'},
+      {x:40,y:240,w:200,h:160,c:'#1a1a2a',l:'Security'},
+      {x:280,y:210,w:240,h:180,c:'#2a2a1a',l:'Admin'},
+      {x:540,y:240,w:220,h:160,c:'#1a2a2a',l:'Weapons'},
+      {x:140,y:450,w:520,h:110,c:'#1c1c22',l:'Hallway'}
+    ];
+    rooms.forEach(function(r){
+      ctx.fillStyle=r.c; ctx.fillRect(r.x,r.y,r.w,r.h);
+      ctx.strokeStyle='#30363d'; ctx.strokeRect(r.x,r.y,r.w,r.h);
+      ctx.fillStyle='#6e7681'; ctx.font='bold 12px sans-serif'; ctx.fillText(r.l,r.x+10,r.y+20);
+    });
+    (state.bodies||[]).forEach(function(b){
+      ctx.globalAlpha=.55;
+      drawCrewmate(b.x, b.y+4, b.color, false);
+      ctx.globalAlpha=1;
+      ctx.font='16px serif'; ctx.textAlign='center';
+      ctx.fillText('💀', b.x, b.y-18);
+    });
+    (state.players||[]).forEach(function(p){
+      if(!p.alive||p.hostOnly)return;
+      drawCrewmate(p.x, p.y, p.color, p.id===myId);
+      ctx.fillStyle='#e6edf3';
+      ctx.font='bold 11px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(p.name+(p.isBot?' 🤖':''), p.x, p.y-28);
+    });
+    ctx.restore();
+  }
+
+  toast('Ready — click Create');
+})();
+</script>
 </body>
 </html>
