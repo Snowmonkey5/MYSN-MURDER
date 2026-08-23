@@ -1,22 +1,30 @@
 # MYSN MURDER
 
-**Among Us style multiplayer** that runs entirely on **Cloudflare**.
+Among Us style multiplayer game.
 
-- **No computer needed** to host
 - **No database**
-- Works from any phone or laptop
-- Bots fill empty slots
-- Full mobile controls (joystick + buttons)
-- Shareable room links
+- Bots fill slots
+- Mobile controls
+- **Host Only mode** (host does not play)
+- Works on Cloudflare (no computer needed)
 
 ---
 
-## Play Online (Recommended)
+## Deploy to Cloudflare (Recommended – easiest)
 
-### 1. Create a free Cloudflare account
-Go to [https://dash.cloudflare.com](https://dash.cloudflare.com) and sign up.
+### Method 1: One-click from GitHub (easiest)
 
-### 2. Install & Deploy
+1. Go to [https://dash.cloudflare.com](https://dash.cloudflare.com) and log in (or create free account)
+2. Click **Workers & Pages** → **Create** → **Start with Hello World** or **Import a repository**
+3. Connect your GitHub account if asked
+4. Select the repository **Snowmonkey5/MYSN-MURDER**
+5. Cloudflare should detect the project
+6. Click **Deploy**
+
+After it finishes you will get a URL like:
+`https://mysn-murder.yourname.workers.dev`
+
+### Method 2: Using the terminal (if Method 1 is confusing)
 
 ```bash
 git clone https://github.com/Snowmonkey5/MYSN-MURDER.git
@@ -26,27 +34,21 @@ npx wrangler login
 npm run deploy
 ```
 
-After deploy finishes you will get a URL like:
+---
 
-```
-https://mysn-murder.YOUR-SUBDOMAIN.workers.dev
-```
+## How to play after deploying
 
-### 3. Play
-
-- Open that URL on your **phone or computer**
-- Tap **Create Room**
-- Share the code (or the link `?room=XXXX`) with friends
-- They open the same site → enter the code → Join
-- Host sets bots + impostors → Start Game
-
-That’s it. No computer has to stay on.
+1. Open your Cloudflare URL on any phone or computer
+2. Type your name
+3. Choose:
+   - **Create & Play** → you join as a normal player
+   - **Create as Host Only** → you manage the room but do **not** play
+4. Share the room code (or the link) with friends
+5. Host sets bots → Start Game
 
 ---
 
-## Local version (optional)
-
-If you still want to run it on your own computer on the same WiFi:
+## Local version (optional – needs Node.js)
 
 ```bash
 npm install
@@ -59,62 +61,14 @@ Then open the Network IP shown in the terminal.
 
 ## Features
 
-| Feature                    | Status |
-|---------------------------|--------|
-| No computer needed        | ✅     |
-| No database               | ✅     |
-| Works on mobile           | ✅     |
-| Bots fill slots           | ✅     |
-| Virtual joystick          | ✅     |
-| Kill / Report / Meeting   | ✅     |
-| Tasks + Voting            | ✅     |
-| Shareable room links      | ✅     |
-| Internet play             | ✅     |
-
-### Controls
-
-**Phone**
-- Left joystick → Move
-- Right buttons → KILL / REPORT / USE / MEET
-
-**Computer**
-- WASD / Arrows → Move
-- Q → Kill
-- R → Report
-- E → Task
-- F → Emergency Meeting
-
----
-
-## How it works
-
-- Each room is a **Cloudflare Durable Object**
-- All game state lives in memory inside that object
-- When the last player leaves, the room disappears
-- Zero traditional database
-
----
-
-## Project structure
-
-```
-MYSN-MURDER/
-├── wrangler.toml          # Cloudflare config
-├── src/
-│   ├── index.js           # Worker entry
-│   └── room.js            # Durable Object (game logic + bots)
-├── public/
-│   ├── index.html         # Beautiful mobile-first UI
-│   └── client.js          # Client + canvas + joystick
-└── server.js              # Optional local Node version
-```
-
----
-
-## Tips
-
-- Use 4–8 total players (humans + bots) for the best experience
-- Add the site to your phone home screen for an app-like feel
-- Room codes are 4 characters (easy to share by voice)
+| Feature              | Status |
+|----------------------|--------|
+| Cloudflare deploy    | ✅     |
+| No database          | ✅     |
+| Host Only mode       | ✅     |
+| Bots                 | ✅     |
+| Mobile joystick      | ✅     |
+| Kill / Report / Meet | ✅     |
+| Tasks + Voting       | ✅     |
 
 Enjoy **MYSN MURDER**!
