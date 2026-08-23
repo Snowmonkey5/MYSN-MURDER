@@ -20,63 +20,95 @@ export class GameRoom {
   constructor(ctx, env) {
     this.ctx = ctx;
     this.env = env;
-    this.sessions = new Map(); // ws -> { id }
+    this.sessions = new Map(); // ws -> playerId
     this.room = null;
     this.botTimer = null;
+    this._loaded = false;
+  }
+
+  async load() {
+    if (this._loaded) return;
+    const saved = await this.ctx.storage.get('room');
+    if (saved) this.room = this.reviveRoom(saved);
+    this._loaded = true;
+  }
+
+  reviveRoom(data) {
+    const players = new Map();
+    if (data.players) {
+      for (const [id, p] of Object.entries(data.players)) {
+        players.set(id, p);
+      }
+    }
+    return { ...data, players };
+  }
+
+  async save() {
+    if (!this.room) {
+      await this.ctx.storage.delete('room');
+      return;
+    }
+    const players = {};
+    for (const [id, p] of this.room.players) {
+      players[id] = p;
+    }
+    await this.ctx.storage.put('room', { ...this.room, players });
   }
 
   async fetch(request) {
-    const upgrade = request.headers.get('Upgrade');
-    if (!upgrade || upgrade.toLowerCase() !== 'websocket') {
-      return new Response('Expected WebSocket. Room is alive.', {
-        status: 426,
-        headers: { 'Content-Type': 'text/plain' }
-      });
+    await this.load();
+
+    if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
+      return new Response('WebSocket only. Room: ' + (this.room ? this.room.code : 'empty'), { status: 426 });
     }
 
     const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
+    const [client, server] = Object.values(pair);
 
-    // Hibernation API (required for free-plan SQLite Durable Objects)
     this.ctx.acceptWebSocket(server);
+    // attachment set on join
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  // ---- Hibernation handlers (these actually fire on free plan) ----
   async webSocketMessage(ws, message) {
+    await this.load();
+
     let msg;
     try {
-      msg = typeof message === 'string' ? JSON.parse(message) : JSON.parse(new TextDecoder().decode(message));
+      const text = typeof message === 'string' ? message : new TextDecoder().decode(message);
+      msg = JSON.parse(text);
     } catch {
-      this.send(ws, { type: 'error', data: 'Bad JSON' });
+      this.safeSend(ws, { type: 'error', data: 'Bad JSON' });
       return;
     }
+
     const { type, data } = msg || {};
     try {
-      if (type === 'join') this.join(ws, data || {});
-      else if (type === 'settings') this.updateSettings(ws, data || {});
-      else if (type === 'start') this.startGame(ws);
-      else if (type === 'move') this.move(ws, data || {});
-      else if (type === 'kill') this.kill(ws, data || {});
-      else if (type === 'report') this.report(ws);
-      else if (type === 'emergency') this.emergency(ws);
-      else if (type === 'task') this.completeTask(ws, data || {});
-      else if (type === 'vote') this.vote(ws, data || {});
-      else if (type === 'ping') this.send(ws, { type: 'pong' });
-      else this.send(ws, { type: 'error', data: 'Unknown type: ' + type });
+      if (type === 'join') await this.join(ws, data || {});
+      else if (type === 'settings') await this.updateSettings(ws, data || {});
+      else if (type === 'start') await this.startGame(ws);
+      else if (type === 'move') await this.move(ws, data || {});
+      else if (type === 'kill') await this.kill(ws, data || {});
+      else if (type === 'report') await this.report(ws);
+      else if (type === 'emergency') await this.emergency(ws);
+      else if (type === 'task') await this.completeTask(ws, data || {});
+      else if (type === 'vote') await this.vote(ws, data || {});
+      else if (type === 'ping') this.safeSend(ws, { type: 'pong' });
+      else this.safeSend(ws, { type: 'error', data: 'Unknown: ' + type });
     } catch (err) {
-      this.send(ws, { type: 'error', data: 'Server error: ' + (err.message || String(err)) });
+      this.safeSend(ws, { type: 'error', data: 'Error: ' + (err && err.message ? err.message : String(err)) });
     }
   }
 
   async webSocketClose(ws) {
-    this.handleClose(ws);
+    await this.load();
+    await this.handleClose(ws);
   }
 
   async webSocketError(ws) {
-    this.handleClose(ws);
+    await this.load();
+    await this.handleClose(ws);
   }
 
   ensureRoom(code) {
@@ -97,10 +129,16 @@ export class GameRoom {
     return this.room;
   }
 
-  join(ws, { name, code, hostOnly }) {
+  async join(ws, { name, code, hostOnly }) {
     const room = this.ensureRoom((code || 'XXXX').toUpperCase());
-    if (room.state !== 'lobby') return this.send(ws, { type: 'error', data: 'Game already started' });
-    if (room.players.size >= room.settings.maxPlayers) return this.send(ws, { type: 'error', data: 'Room full' });
+    if (room.state !== 'lobby') {
+      this.safeSend(ws, { type: 'error', data: 'Game already started' });
+      return;
+    }
+    if (room.players.size >= room.settings.maxPlayers) {
+      this.safeSend(ws, { type: 'error', data: 'Room full' });
+      return;
+    }
 
     const id = crypto.randomUUID();
     const used = [...room.players.values()].map(p => p.color);
@@ -123,27 +161,45 @@ export class GameRoom {
     };
 
     room.players.set(id, player);
-    this.sessions.set(ws, { id });
+    this.sessions.set(ws, id);
+    try { ws.serializeAttachment({ id }); } catch {}
+
     if (!room.hostId) room.hostId = id;
 
-    this.send(ws, {
+    await this.save();
+
+    this.safeSend(ws, {
       type: 'joined',
       data: { id, isHost: room.hostId === id, hostOnly: !!hostOnly, state: this.publicState() }
     });
     this.broadcast({ type: 'update', data: this.publicState() }, ws);
   }
 
-  updateSettings(ws, settings) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.hostId !== s.id || this.room.state !== 'lobby') return;
+  getPlayerId(ws) {
+    if (this.sessions.has(ws)) return this.sessions.get(ws);
+    try {
+      const att = ws.deserializeAttachment();
+      if (att && att.id) {
+        this.sessions.set(ws, att.id);
+        return att.id;
+      }
+    } catch {}
+    return null;
+  }
+
+  async updateSettings(ws, settings) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.hostId !== pid || this.room.state !== 'lobby') return;
     Object.assign(this.room.settings, settings);
+    await this.save();
     this.broadcast({ type: 'settings', data: this.room.settings });
   }
 
-  startGame(ws) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.hostId !== s.id || this.room.state !== 'lobby') {
-      return this.send(ws, { type: 'error', data: 'Only host can start' });
+  async startGame(ws) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.hostId !== pid || this.room.state !== 'lobby') {
+      this.safeSend(ws, { type: 'error', data: 'Only host can start' });
+      return;
     }
 
     const curBots = [...this.room.players.values()].filter(p => p.isBot).length;
@@ -154,7 +210,8 @@ export class GameRoom {
       this.room.players.set(bid, {
         id: bid, name: 'Bot ' + (i + 1),
         color: COLORS.find(c => !used.includes(c)) || COLORS[i % COLORS.length],
-        x: 400 + (Math.random() - 0.5) * 200, y: 300 + (Math.random() - 0.5) * 150,
+        x: 400 + (Math.random() - 0.5) * 200,
+        y: 300 + (Math.random() - 0.5) * 150,
         role: null, alive: true, isBot: true, hostOnly: false,
         tasks: [], completedTasks: 0, lastKill: 0, voted: false
       });
@@ -162,7 +219,8 @@ export class GameRoom {
 
     const playable = [...this.room.players.values()].filter(p => !p.hostOnly);
     if (playable.length < 2) {
-      return this.send(ws, { type: 'error', data: 'Need at least 2 players (add bots!)' });
+      this.safeSend(ws, { type: 'error', data: 'Need at least 2 players (add bots!)' });
+      return;
     }
 
     const impCount = Math.min(this.room.settings.impostors, Math.max(1, Math.floor(playable.length / 3)));
@@ -184,26 +242,40 @@ export class GameRoom {
     this.room.bodies = [];
     this.room.votes = {};
     this.room.winner = null;
+    await this.save();
 
-    for (const [sock, sess] of this.sessions) {
-      const p = this.room.players.get(sess.id);
+    // Send roles to connected sockets
+    for (const [sock, id] of this.sessions) {
+      const p = this.room.players.get(id);
       if (p && !p.hostOnly) {
-        this.send(sock, { type: 'role', data: { role: p.role, tasks: p.tasks } });
+        this.safeSend(sock, { type: 'role', data: { role: p.role, tasks: p.tasks } });
       }
     }
+    // Also try all hibernated sockets from ctx
+    try {
+      for (const sock of this.ctx.getWebSockets()) {
+        const id = this.getPlayerId(sock);
+        const p = id && this.room.players.get(id);
+        if (p && !p.hostOnly) {
+          this.safeSend(sock, { type: 'role', data: { role: p.role, tasks: p.tasks } });
+        }
+      }
+    } catch {}
+
     this.broadcast({ type: 'started', data: this.publicState() });
 
     if (this.botTimer) clearInterval(this.botTimer);
-    this.botTimer = setInterval(() => this.updateBots(), 700);
+    this.botTimer = setInterval(() => this.updateBots(), 800);
   }
 
-  updateBots() {
+  async updateBots() {
+    await this.load();
     if (!this.room || this.room.state !== 'playing') return;
     const alive = [...this.room.players.values()].filter(p => p.alive && !p.hostOnly);
     for (const bot of alive.filter(p => p.isBot)) {
-      if (Math.random() < 0.45) {
-        bot.x = Math.max(30, Math.min(770, bot.x + (Math.random() - 0.5) * 55));
-        bot.y = Math.max(30, Math.min(570, bot.y + (Math.random() - 0.5) * 55));
+      if (Math.random() < 0.4) {
+        bot.x = Math.max(30, Math.min(770, bot.x + (Math.random() - 0.5) * 50));
+        bot.y = Math.max(30, Math.min(570, bot.y + (Math.random() - 0.5) * 50));
       }
       if (bot.role === 'impostor') {
         const now = Date.now();
@@ -211,7 +283,7 @@ export class GameRoom {
           const targets = alive.filter(p =>
             p.id !== bot.id && p.role === 'crewmate' && Math.hypot(p.x - bot.x, p.y - bot.y) < 75
           );
-          if (targets.length && Math.random() < 0.3) {
+          if (targets.length && Math.random() < 0.25) {
             this.doKill(bot, targets[Math.floor(Math.random() * targets.length)]);
             bot.lastKill = now;
           }
@@ -219,30 +291,31 @@ export class GameRoom {
       }
       if (bot.role === 'crewmate') {
         const task = bot.tasks.find(t => !t.done);
-        if (task && Math.random() < 0.12) {
+        if (task && Math.random() < 0.1) {
           task.done = true;
           bot.completedTasks++;
           this.checkTaskWin();
         }
       }
     }
+    await this.save();
     this.broadcast({ type: 'update', data: this.publicState() });
   }
 
-  move(ws, { x, y }) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.state !== 'playing') return;
-    const p = this.room.players.get(s.id);
+  async move(ws, { x, y }) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.state !== 'playing') return;
+    const p = this.room.players.get(pid);
     if (!p || !p.alive || p.hostOnly) return;
     p.x = Math.max(20, Math.min(780, Number(x) || p.x));
     p.y = Math.max(20, Math.min(580, Number(y) || p.y));
     this.broadcast({ type: 'moved', data: { id: p.id, x: p.x, y: p.y } }, ws);
   }
 
-  kill(ws, { targetId }) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.state !== 'playing') return;
-    const killer = this.room.players.get(s.id);
+  async kill(ws, { targetId }) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.state !== 'playing') return;
+    const killer = this.room.players.get(pid);
     if (!killer || killer.hostOnly || killer.role !== 'impostor' || !killer.alive) return;
     if (Date.now() - killer.lastKill < this.room.settings.killCooldown * 1000) return;
     const target = this.room.players.get(targetId);
@@ -250,6 +323,7 @@ export class GameRoom {
     if (Math.hypot(target.x - killer.x, target.y - killer.y) > 85) return;
     killer.lastKill = Date.now();
     this.doKill(killer, target);
+    await this.save();
   }
 
   doKill(killer, victim) {
@@ -259,29 +333,30 @@ export class GameRoom {
     this.checkWin();
   }
 
-  report(ws) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.state !== 'playing') return;
-    const p = this.room.players.get(s.id);
+  async report(ws) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.state !== 'playing') return;
+    const p = this.room.players.get(pid);
     if (!p || !p.alive || p.hostOnly) return;
     const near = this.room.bodies.some(b => Math.hypot(b.x - p.x, b.y - p.y) < 90);
     if (!near && !this.room.bodies.length) return;
-    this.startMeeting(p.name + ' reported a body');
+    await this.startMeeting(p.name + ' reported a body');
   }
 
-  emergency(ws) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.state !== 'playing') return;
-    const p = this.room.players.get(s.id);
+  async emergency(ws) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.state !== 'playing') return;
+    const p = this.room.players.get(pid);
     if (!p || !p.alive || p.hostOnly) return;
-    this.startMeeting(p.name + ' called emergency meeting');
+    await this.startMeeting(p.name + ' called emergency meeting');
   }
 
-  startMeeting(reason) {
+  async startMeeting(reason) {
     this.room.state = 'meeting';
     this.room.votes = {};
     this.room.bodies = [];
     for (const p of this.room.players.values()) p.voted = false;
+    await this.save();
     this.broadcast({
       type: 'meeting',
       data: {
@@ -291,19 +366,30 @@ export class GameRoom {
         voting: this.room.votingTime
       }
     });
-    setTimeout(() => this.endMeeting(), (this.room.discussionTime + this.room.votingTime) * 1000);
+    // Use alarm for meeting end if possible
+    try {
+      await this.ctx.storage.setAlarm(Date.now() + (this.room.discussionTime + this.room.votingTime) * 1000);
+    } catch {
+      setTimeout(() => this.endMeeting(), (this.room.discussionTime + this.room.votingTime) * 1000);
+    }
   }
 
-  vote(ws, { targetId }) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.state !== 'meeting') return;
-    const voter = this.room.players.get(s.id);
+  async alarm() {
+    await this.load();
+    await this.endMeeting();
+  }
+
+  async vote(ws, { targetId }) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.state !== 'meeting') return;
+    const voter = this.room.players.get(pid);
     if (!voter || !voter.alive || voter.voted || voter.hostOnly) return;
     voter.voted = true;
-    this.room.votes[s.id] = targetId;
+    this.room.votes[pid] = targetId;
+    await this.save();
   }
 
-  endMeeting() {
+  async endMeeting() {
     if (!this.room || this.room.state !== 'meeting') return;
     const counts = {};
     let skips = 0;
@@ -323,24 +409,28 @@ export class GameRoom {
       if (ep) ep.alive = false;
     }
     this.room.state = 'playing';
+    await this.save();
     this.broadcast({
       type: 'meetingEnd',
       data: { ejected: ep ? { id: ep.id, name: ep.name, role: ep.role } : null, tie: !ep }
     });
     this.checkWin();
-    if (this.room.state === 'playing') this.broadcast({ type: 'update', data: this.publicState() });
+    if (this.room && this.room.state === 'playing') {
+      this.broadcast({ type: 'update', data: this.publicState() });
+    }
   }
 
-  completeTask(ws, { taskId }) {
-    const s = this.sessions.get(ws);
-    if (!s || !this.room || this.room.state !== 'playing') return;
-    const p = this.room.players.get(s.id);
+  async completeTask(ws, { taskId }) {
+    const pid = this.getPlayerId(ws);
+    if (!pid || !this.room || this.room.state !== 'playing') return;
+    const p = this.room.players.get(pid);
     if (!p || p.hostOnly || p.role !== 'crewmate' || !p.alive) return;
     const task = p.tasks.find(t => t.id === taskId && !t.done);
     if (!task) return;
     task.done = true;
     p.completedTasks++;
-    this.send(ws, { type: 'taskDone', data: { taskId, completed: p.completedTasks, total: p.tasks.length } });
+    await this.save();
+    this.safeSend(ws, { type: 'taskDone', data: { taskId, completed: p.completedTasks, total: p.tasks.length } });
     this.checkTaskWin();
     this.broadcast({ type: 'update', data: this.publicState() });
   }
@@ -358,27 +448,30 @@ export class GameRoom {
     if (crew.length && crew.every(c => c.completedTasks >= (c.tasks.length || 1))) this.endGame('crew');
   }
 
-  endGame(winner) {
+  async endGame(winner) {
     this.room.state = 'ended';
     this.room.winner = winner;
     if (this.botTimer) { clearInterval(this.botTimer); this.botTimer = null; }
+    await this.save();
     this.broadcast({ type: 'gameOver', data: { winner, players: this.publicState().players } });
   }
 
-  handleClose(ws) {
-    const s = this.sessions.get(ws);
+  async handleClose(ws) {
+    const pid = this.getPlayerId(ws);
     this.sessions.delete(ws);
-    if (!s || !this.room) return;
-    this.room.players.delete(s.id);
-    if (this.room.hostId === s.id) {
+    if (!pid || !this.room) return;
+    this.room.players.delete(pid);
+    if (this.room.hostId === pid) {
       const next = [...this.room.players.values()].find(p => !p.isBot);
       this.room.hostId = next ? next.id : null;
     }
     if (![...this.room.players.values()].some(p => !p.isBot)) {
       if (this.botTimer) clearInterval(this.botTimer);
       this.room = null;
+      await this.save();
       return;
     }
+    await this.save();
     this.broadcast({ type: 'update', data: this.publicState() });
   }
 
@@ -390,24 +483,31 @@ export class GameRoom {
       settings: this.room.settings,
       hostId: this.room.hostId,
       winner: this.room.winner,
-      bodies: this.room.bodies,
+      bodies: this.room.bodies || [],
       players: [...this.room.players.values()].map(p => ({
         id: p.id, name: p.name, color: p.color, x: p.x, y: p.y,
         alive: p.alive, isBot: p.isBot, hostOnly: !!p.hostOnly,
         role: (this.room.state === 'ended' || !p.alive) ? p.role : undefined,
-        completedTasks: p.completedTasks, taskTotal: p.tasks?.length || 0
+        completedTasks: p.completedTasks, taskTotal: (p.tasks && p.tasks.length) || 0
       }))
     };
   }
 
-  send(ws, msg) {
+  safeSend(ws, msg) {
     try { ws.send(JSON.stringify(msg)); } catch {}
   }
 
   broadcast(msg, except) {
     const raw = JSON.stringify(msg);
-    for (const ws of this.sessions.keys()) {
+    // Memory sessions
+    for (const [ws] of this.sessions) {
       if (ws !== except) try { ws.send(raw); } catch {}
     }
+    // Hibernated sockets
+    try {
+      for (const ws of this.ctx.getWebSockets()) {
+        if (ws !== except) try { ws.send(raw); } catch {}
+      }
+    } catch {}
   }
 }
