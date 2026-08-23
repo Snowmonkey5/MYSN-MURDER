@@ -1,4 +1,4 @@
-// MYSN MURDER - Cloudflare client
+// MYSN MURDER client - Cloudflare + Host Only + color #1C9455
 const params = new URLSearchParams(location.search);
 let roomCode = (params.get('room') || '').toUpperCase();
 let ws = null;
@@ -7,13 +7,13 @@ let myRole = null;
 let myTasks = [];
 let roomState = null;
 let isHost = false;
+let isHostOnly = false;
 let keys = {};
 let canvas, ctx;
 let animId = null;
 let isMobile = false;
 let joystick = { active: false, dx: 0, dy: 0 };
 let lastMove = 0;
-let reconnectAttempts = 0;
 
 const screens = {
   menu: document.getElementById('menuScreen'),
@@ -27,7 +27,7 @@ function show(name) {
   screens[name].classList.add('active');
 }
 
-function toast(msg, color = '#238636') {
+function toast(msg, color = '#1C9455') {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.style.background = color;
@@ -36,15 +36,15 @@ function toast(msg, color = '#238636') {
   t._timer = setTimeout(() => t.style.display = 'none', 2800);
 }
 
-function connect(code) {
+function connect(code, hostOnly = false) {
+  isHostOnly = hostOnly;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const url = `${proto}://${location.host}/ws/${code}`;
   ws = new WebSocket(url);
 
   ws.onopen = () => {
-    reconnectAttempts = 0;
-    const name = document.getElementById('playerName').value.trim() || 'Player';
-    send('join', { name, code });
+    const name = document.getElementById('playerName').value.trim() || (hostOnly ? 'Host' : 'Player');
+    send('join', { name, code, hostOnly });
   };
 
   ws.onmessage = (e) => {
@@ -53,18 +53,11 @@ function connect(code) {
     handle(msg);
   };
 
-  ws.onclose = () => {
-    if (roomState && roomState.state !== 'ended' && reconnectAttempts < 5) {
-      reconnectAttempts++;
-      setTimeout(() => connect(code), 1000 * reconnectAttempts);
-    }
-  };
+  ws.onclose = () => {};
 }
 
 function send(type, data = {}) {
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ type, data }));
-  }
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type, data }));
 }
 
 function handle(msg) {
@@ -74,11 +67,13 @@ function handle(msg) {
     case 'joined':
       myId = data.id;
       isHost = data.isHost;
+      isHostOnly = !!data.hostOnly;
       roomState = data.state;
       roomCode = data.state.code;
       document.getElementById('roomCodeDisplay').textContent = roomCode;
       document.getElementById('shareInfo').textContent =
         `Share code or link: ${location.origin}?room=${roomCode}`;
+
       if (isHost) {
         document.getElementById('hostControls').classList.remove('hidden');
         document.getElementById('waitingText').classList.add('hidden');
@@ -86,9 +81,15 @@ function handle(msg) {
         document.getElementById('hostControls').classList.add('hidden');
         document.getElementById('waitingText').classList.remove('hidden');
       }
+
+      if (isHostOnly) {
+        document.getElementById('hostOnlyNote').classList.remove('hidden');
+      } else {
+        document.getElementById('hostOnlyNote').classList.add('hidden');
+      }
+
       updateLobby(data.state);
       show('lobby');
-      // Update URL
       history.replaceState(null, '', `?room=${roomCode}`);
       break;
 
@@ -102,15 +103,16 @@ function handle(msg) {
       break;
 
     case 'role':
+      if (isHostOnly) return; // host only never gets a role
       myRole = data.role;
       myTasks = data.tasks || [];
       document.getElementById('roleBadge').textContent = `Role: ${myRole.toUpperCase()}`;
-      document.getElementById('roleBadge').style.color = myRole === 'impostor' ? '#ff4757' : '#3fb950';
+      document.getElementById('roleBadge').style.color = myRole === 'impostor' ? '#ff4757' : '#1C9455';
       const reveal = document.getElementById('roleReveal');
       const rt = document.getElementById('roleText');
       const rd = document.getElementById('roleDesc');
       rt.textContent = myRole.toUpperCase();
-      rt.style.color = myRole === 'impostor' ? '#ff4757' : '#3fb950';
+      rt.style.color = myRole === 'impostor' ? '#ff4757' : '#1C9455';
       rd.textContent = myRole === 'impostor'
         ? 'Eliminate the crewmates without getting caught'
         : 'Finish your tasks and find the impostor';
@@ -119,11 +121,17 @@ function handle(msg) {
 
     case 'started':
       roomState = data;
+      if (isHostOnly) {
+        // Host only stays in a simple view or goes to game as spectator
+        document.getElementById('roleBadge').textContent = 'HOST (watching)';
+        document.getElementById('roleBadge').style.color = '#1C9455';
+        document.getElementById('tasksContent').textContent = 'Spectator mode';
+      }
       show('game');
       initCanvas();
       detectMobile();
       startLoop();
-      updateTasks();
+      if (!isHostOnly) updateTasks();
       break;
 
     case 'moved':
@@ -150,11 +158,12 @@ function handle(msg) {
       document.getElementById('meetingOverlay').classList.add('active');
       const list = document.getElementById('voteList');
       list.innerHTML = '';
-      data.players.filter(p => p.alive).forEach(p => {
+      data.players.filter(p => p.alive && !p.hostOnly).forEach(p => {
         const btn = document.createElement('button');
         btn.className = 'vote-btn';
         btn.innerHTML = `<div class="color-dot" style="background:${p.color}"></div>${p.name}`;
         btn.onclick = () => {
+          if (isHostOnly) return; // host only can't vote
           document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
           btn.classList.add('selected');
           send('vote', { targetId: p.id });
@@ -185,7 +194,7 @@ function handle(msg) {
       const sub = document.getElementById('endSubtitle');
       if (data.winner === 'crew') {
         title.textContent = 'CREWMATES WIN';
-        title.style.color = '#3fb950';
+        title.style.color = '#1C9455';
         sub.textContent = 'Tasks finished or impostors eliminated!';
       } else {
         title.textContent = 'IMPOSTORS WIN';
@@ -194,7 +203,7 @@ function handle(msg) {
       }
       const box = document.getElementById('endPlayers');
       box.innerHTML = '';
-      data.players.forEach(p => {
+      data.players.filter(p => !p.hostOnly).forEach(p => {
         const d = document.createElement('div');
         d.style.margin = '6px';
         d.innerHTML = `<span style="color:${p.color}">●</span> ${p.name} — <strong>${p.role || '?'}</strong>${p.isBot ? ' 🤖' : ''}`;
@@ -215,31 +224,39 @@ function updateLobby(state) {
   (state.players || []).forEach(p => {
     const chip = document.createElement('div');
     chip.className = 'player-chip';
-    chip.innerHTML = `<div class="color-dot" style="background:${p.color}"></div>${p.name}${p.isBot ? ' 🤖' : ''}`;
+    let label = p.name;
+    if (p.isBot) label += ' 🤖';
+    if (p.hostOnly) label += ' (Host)';
+    chip.innerHTML = `<div class="color-dot" style="background:${p.color || '#1C9455'}"></div>${label}`;
     c.appendChild(chip);
   });
 }
 
-// Menu buttons
+// Buttons
 document.getElementById('btnCreate').onclick = () => {
-  const code = Array.from({length:4}, () =>
-    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]
+  const code = Array.from({ length: 4 }, () =>
+    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
   ).join('');
-  connect(code);
+  connect(code, false);
+};
+
+document.getElementById('btnCreateHost').onclick = () => {
+  const code = Array.from({ length: 4 }, () =>
+    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
+  ).join('');
+  connect(code, true);
 };
 
 document.getElementById('btnJoin').onclick = () => {
   const code = document.getElementById('joinCode').value.trim().toUpperCase();
   if (code.length !== 4) return toast('Enter a 4-letter code', '#da3633');
-  connect(code);
+  connect(code, false);
 };
 
-// Auto-join from URL
 if (roomCode && roomCode.length === 4) {
   document.getElementById('joinCode').value = roomCode;
 }
 
-// Host settings
 document.getElementById('botSlider').oninput = (e) => {
   document.getElementById('botCountLabel').textContent = e.target.value;
   send('settings', { botCount: +e.target.value });
@@ -249,13 +266,14 @@ document.getElementById('impSlider').oninput = (e) => {
   send('settings', { impostors: +e.target.value });
 };
 document.getElementById('btnStart').onclick = () => send('start');
-
 document.getElementById('btnRoleOk').onclick = () => {
   document.getElementById('roleReveal').classList.remove('active');
 };
 document.getElementById('btnSkip').onclick = () => {
-  send('vote', { targetId: null });
-  toast('Vote skipped');
+  if (!isHostOnly) {
+    send('vote', { targetId: null });
+    toast('Vote skipped');
+  }
 };
 document.getElementById('btnBackMenu').onclick = () => location.href = location.pathname;
 
@@ -274,7 +292,7 @@ function resize() {
 
 function detectMobile() {
   isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  if (isMobile) {
+  if (isMobile && !isHostOnly) {
     document.getElementById('mobileControls').classList.add('visible');
     setupJoystick();
     setupButtons();
@@ -283,8 +301,8 @@ function detectMobile() {
 
 window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-
 window.addEventListener('keydown', e => {
+  if (isHostOnly) return;
   if (e.key === 'q') tryKill();
   if (e.key === 'r') send('report');
   if (e.key === 'e') tryTask();
@@ -295,17 +313,16 @@ function setupJoystick() {
   const zone = document.getElementById('joystickZone');
   const knob = document.getElementById('joystickKnob');
   const max = 42;
-
   const start = e => { e.preventDefault(); joystick.active = true; };
   const move = e => {
     if (!joystick.active) return;
     e.preventDefault();
     const t = e.touches ? e.touches[0] : e;
     const r = zone.getBoundingClientRect();
-    let dx = t.clientX - (r.left + r.width/2);
-    let dy = t.clientY - (r.top + r.height/2);
+    let dx = t.clientX - (r.left + r.width / 2);
+    let dy = t.clientY - (r.top + r.height / 2);
     const d = Math.hypot(dx, dy);
-    if (d > max) { dx = dx/d*max; dy = dy/d*max; }
+    if (d > max) { dx = dx / d * max; dy = dy / d * max; }
     knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     joystick.dx = dx / max;
     joystick.dy = dy / max;
@@ -316,7 +333,6 @@ function setupJoystick() {
     joystick.dx = joystick.dy = 0;
     knob.style.transform = 'translate(-50%, -50%)';
   };
-
   zone.addEventListener('touchstart', start, { passive: false });
   zone.addEventListener('touchmove', move, { passive: false });
   zone.addEventListener('touchend', end, { passive: false });
@@ -333,12 +349,12 @@ function setupButtons() {
 }
 
 function tryKill() {
-  if (myRole !== 'impostor' || !roomState) return;
+  if (isHostOnly || myRole !== 'impostor' || !roomState) return;
   const me = roomState.players.find(p => p.id === myId);
   if (!me || !me.alive) return;
   let closest = null, min = 85;
   roomState.players.forEach(p => {
-    if (p.id === myId || !p.alive) return;
+    if (p.id === myId || !p.alive || p.hostOnly) return;
     const d = Math.hypot(p.x - me.x, p.y - me.y);
     if (d < min) { min = d; closest = p; }
   });
@@ -346,7 +362,7 @@ function tryKill() {
 }
 
 function tryTask() {
-  if (myRole !== 'crewmate' || !myTasks.length) return;
+  if (isHostOnly || myRole !== 'crewmate' || !myTasks.length) return;
   const t = myTasks.find(t => !t.done);
   if (t) {
     send('task', { taskId: t.id });
@@ -357,6 +373,7 @@ function tryTask() {
 
 function updateTasks() {
   const el = document.getElementById('tasksContent');
+  if (isHostOnly) { el.textContent = 'Spectator'; return; }
   if (myRole === 'impostor') {
     el.innerHTML = '<div style="color:#ff4757">Kill the crew</div>';
     return;
@@ -377,7 +394,7 @@ function startLoop() {
 }
 
 function update() {
-  if (!roomState || roomState.state !== 'playing') return;
+  if (isHostOnly || !roomState || roomState.state !== 'playing') return;
   const me = roomState.players.find(p => p.id === myId);
   if (!me || !me.alive) return;
 
@@ -395,7 +412,6 @@ function update() {
     me.y += (dy / len) * spd;
     me.x = Math.max(20, Math.min(780, me.x));
     me.y = Math.max(20, Math.min(580, me.y));
-
     const now = Date.now();
     if (now - lastMove > 35) {
       send('move', { x: me.x, y: me.y });
@@ -412,7 +428,6 @@ function draw() {
   ctx.fillStyle = '#0d1117';
   ctx.fillRect(0, 0, w, h);
 
-  // Grid
   ctx.strokeStyle = '#161b22';
   ctx.lineWidth = 1;
   for (let x = 0; x < w; x += 48) {
@@ -430,7 +445,6 @@ function draw() {
   ctx.translate(ox, oy);
   ctx.scale(scale, scale);
 
-  // Rooms
   const rooms = [
     { x: 40, y: 40, w: 220, h: 160, c: '#1a2332', l: 'Cafeteria' },
     { x: 290, y: 40, w: 220, h: 130, c: '#1a2a1a', l: 'Medbay' },
@@ -443,7 +457,8 @@ function draw() {
   rooms.forEach(r => {
     ctx.fillStyle = r.c;
     ctx.beginPath();
-    ctx.roundRect(r.x, r.y, r.w, r.h, 10);
+    if (ctx.roundRect) ctx.roundRect(r.x, r.y, r.w, r.h, 10);
+    else ctx.rect(r.x, r.y, r.w, r.h);
     ctx.fill();
     ctx.strokeStyle = '#30363d';
     ctx.lineWidth = 2;
@@ -453,7 +468,6 @@ function draw() {
     ctx.fillText(r.l, r.x + 12, r.y + 22);
   });
 
-  // Bodies
   (roomState.bodies || []).forEach(b => {
     ctx.globalAlpha = 0.55;
     ctx.beginPath();
@@ -465,17 +479,14 @@ function draw() {
     ctx.fillText('💀', b.x - 9, b.y - 12);
   });
 
-  // Players
   roomState.players.forEach(p => {
-    if (!p.alive) return;
+    if (!p.alive || p.hostOnly) return;
 
-    // Shadow
     ctx.beginPath();
     ctx.ellipse(p.x, p.y + 18, 14, 6, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fill();
 
-    // Body
     ctx.beginPath();
     ctx.arc(p.x, p.y, 17, 0, Math.PI * 2);
     ctx.fillStyle = p.color;
@@ -484,13 +495,11 @@ function draw() {
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Visor
     ctx.beginPath();
     ctx.ellipse(p.x + 5, p.y - 3, 8, 6, 0.2, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(180,220,255,0.75)';
     ctx.fill();
 
-    // Name
     ctx.fillStyle = '#e6edf3';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
@@ -499,7 +508,7 @@ function draw() {
     if (p.id === myId) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 24, 0, Math.PI * 2);
-      ctx.strokeStyle = '#58a6ff';
+      ctx.strokeStyle = '#1C9455';
       ctx.lineWidth = 2.5;
       ctx.stroke();
     }
