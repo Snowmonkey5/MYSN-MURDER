@@ -1,212 +1,423 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>MYSN MURDER</title>
-  <meta name="theme-color" content="#1C9455" />
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body {
-      height: 100%; background: #0d1117; color: #e6edf3;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      overflow: hidden; touch-action: none; user-select: none;
-    }
-    #app { width: 100%; height: 100%; position: relative; }
-    .screen {
-      display: none; width: 100%; height: 100%;
-      flex-direction: column; align-items: center; justify-content: center;
-      padding: 20px 16px; text-align: center;
-    }
-    .screen.active { display: flex; }
-    h1 {
-      font-size: clamp(2rem, 8vw, 3.2rem); font-weight: 800;
-      background: linear-gradient(135deg, #1C9455, #25c46e, #3dd68c);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 6px;
-    }
-    .subtitle { color: #8b949e; font-size: 0.95rem; margin-bottom: 28px; }
-    input, button {
-      font-size: 16px; border-radius: 12px; border: none;
-      padding: 14px 18px; margin: 6px 0; width: min(300px, 92vw);
-    }
-    input {
-      background: #21262d; color: #e6edf3; border: 1px solid #30363d; text-align: center;
-    }
-    input:focus { outline: 2px solid #1C9455; border-color: transparent; }
-    button {
-      background: linear-gradient(180deg, #25c46e, #1C9455); color: white;
-      font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(28,148,85,0.4);
-    }
-    button:active { transform: scale(0.97); }
-    button.secondary { background: #30363d; box-shadow: none; }
-    button.hostonly {
-      background: linear-gradient(180deg, #2d9f6f, #1a7a4a);
-      box-shadow: 0 4px 14px rgba(28,148,85,0.35);
-    }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 320px; }
-    #lobbyPlayers {
-      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
-      max-width: 420px; margin: 18px 0; max-height: 180px; overflow-y: auto;
-    }
-    .player-chip {
-      display: flex; align-items: center; gap: 8px;
-      background: #21262d; padding: 8px 14px; border-radius: 24px;
-      font-size: 0.9rem; border: 1px solid #30363d;
-    }
-    .color-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-    .code-big { font-size: 2.4rem; font-weight: 800; letter-spacing: 8px; color: #1C9455; margin: 8px 0 4px; }
-    #gameScreen { padding: 0; }
-    #gameWrapper { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0d1117; }
-    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-    #hud {
-      position: absolute; top: 0; left: 0; right: 0; padding: 12px;
-      display: flex; justify-content: space-between; align-items: flex-start;
-      pointer-events: none; z-index: 10; gap: 8px;
-    }
-    #hud > * { pointer-events: auto; }
-    .hud-box {
-      background: rgba(13,17,23,0.88); border: 1px solid #30363d;
-      border-radius: 12px; padding: 10px 14px; font-size: 0.82rem;
-    }
-    #taskList { max-width: 160px; text-align: left; }
-    .task-done { text-decoration: line-through; color: #1C9455; opacity: 0.9; }
-    #mobileControls {
-      position: absolute; bottom: 0; left: 0; right: 0; height: 190px;
-      pointer-events: none; z-index: 20; display: none;
-    }
-    #mobileControls.visible { display: block; }
-    #joystickZone { position: absolute; left: 18px; bottom: 28px; width: 128px; height: 128px; pointer-events: auto; }
-    #joystickBase {
-      width: 128px; height: 128px; border-radius: 50%;
-      background: rgba(28,148,85,0.12); border: 2px solid rgba(28,148,85,0.35); position: relative;
-    }
-    #joystickKnob {
-      width: 52px; height: 52px; border-radius: 50%; background: rgba(28,148,85,0.55);
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    }
-    #actionButtons {
-      position: absolute; right: 14px; bottom: 24px;
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; pointer-events: auto;
-    }
-    .action-btn {
-      width: 62px; height: 62px; border-radius: 50%; border: none;
-      font-size: 11px; font-weight: 800; color: white;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
-    }
-    #btnKill { background: #da3633; }
-    #btnReport { background: #d29922; }
-    #btnUse { background: #1C9455; }
-    #btnMeeting { background: #238636; }
-    #meetingOverlay, #roleReveal {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.92);
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      z-index: 50; padding: 20px;
-    }
-    #meetingOverlay.active, #roleReveal.active { display: flex; }
-    #voteList { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 380px; margin: 18px 0; }
-    .vote-btn {
-      background: #21262d; border: 2px solid #30363d; border-radius: 14px;
-      padding: 12px 16px; color: white; font-size: 14px; cursor: pointer;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .vote-btn.selected { border-color: #1C9455; background: #15251c; }
-    #roleText { font-size: clamp(2.2rem, 10vw, 3.5rem); font-weight: 900; margin: 12px 0; }
-    #toast {
-      position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
-      background: #1C9455; color: white; padding: 12px 22px; border-radius: 10px;
-      font-weight: 700; display: none; z-index: 100; white-space: nowrap;
-    }
-    .slider-row {
-      display: flex; align-items: center; gap: 12px; margin: 10px 0;
-      width: min(280px, 90vw); justify-content: space-between;
-    }
-    .slider-row label { font-size: 0.9rem; color: #8b949e; }
-    input[type=range] { width: 120px; accent-color: #1C9455; }
-    .hidden { display: none !important; }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>MYSN MURDER</title>
+<meta name="theme-color" content="#1C9455"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none}
+#app{width:100%;height:100%;position:relative}
+.screen{display:none;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;padding:20px 16px;text-align:center}
+.screen.active{display:flex}
+h1{font-size:clamp(2rem,8vw,3rem);font-weight:800;background:linear-gradient(135deg,#1C9455,#25c46e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}
+.sub{color:#8b949e;margin-bottom:24px;font-size:.95rem}
+input,button{font-size:16px;border-radius:12px;border:none;padding:14px 18px;margin:6px 0;width:min(300px,92vw)}
+input{background:#21262d;color:#e6edf3;border:1px solid #30363d;text-align:center}
+button{background:linear-gradient(180deg,#25c46e,#1C9455);color:#fff;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(28,148,85,.4)}
+button:active{transform:scale(.97)}
+button.sec{background:#30363d;box-shadow:none}
+button.host{background:linear-gradient(180deg,#2d9f6f,#1a7a4a)}
+.row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.code{font-size:2.2rem;font-weight:800;letter-spacing:6px;color:#1C9455;margin:8px 0}
+#players{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:400px;margin:16px 0;max-height:160px;overflow-y:auto}
+.chip{display:flex;align-items:center;gap:8px;background:#21262d;padding:8px 12px;border-radius:20px;font-size:.9rem;border:1px solid #30363d}
+.dot{width:12px;height:12px;border-radius:50%}
+.slider{display:flex;align-items:center;gap:10px;margin:8px 0;width:min(280px,90vw);justify-content:space-between}
+.slider label{color:#8b949e;font-size:.9rem}
+input[type=range]{width:110px;accent-color:#1C9455}
+.hidden{display:none!important}
+#gameWrap{position:relative;width:100%;height:100%;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;top:0;left:0;right:0;padding:12px;display:flex;justify-content:space-between;pointer-events:none;z-index:10}
+#hud>*{pointer-events:auto}
+.box{background:rgba(13,17,23,.9);border:1px solid #30363d;border-radius:10px;padding:8px 12px;font-size:.8rem}
+#mobile{position:absolute;bottom:0;left:0;right:0;height:180px;pointer-events:none;z-index:20;display:none}
+#mobile.on{display:block}
+#joy{position:absolute;left:16px;bottom:24px;width:120px;height:120px;pointer-events:auto}
+#joyBase{width:120px;height:120px;border-radius:50%;background:rgba(28,148,85,.15);border:2px solid rgba(28,148,85,.4);position:relative}
+#joyKnob{width:48px;height:48px;border-radius:50%;background:rgba(28,148,85,.6);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+#acts{position:absolute;right:12px;bottom:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px;pointer-events:auto}
+.abtn{width:58px;height:58px;border-radius:50%;border:none;font-size:11px;font-weight:800;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+#k{background:#da3633}#r{background:#d29922}#u{background:#1C9455}#m{background:#238636}
+#meet,#role{position:absolute;inset:0;background:rgba(0,0,0,.92);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:50;padding:20px}
+#meet.on,#role.on{display:flex}
+#votes{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:360px;margin:16px 0}
+.vbtn{background:#21262d;border:2px solid #30363d;border-radius:12px;padding:10px 14px;color:#fff;display:flex;align-items:center;gap:8px;cursor:pointer}
+.vbtn.sel{border-color:#1C9455}
+#toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:#1C9455;color:#fff;padding:12px 20px;border-radius:10px;font-weight:700;display:none;z-index:100;white-space:nowrap}
+</style>
 </head>
 <body>
-  <div id="app">
-    <div id="menuScreen" class="screen active">
-      <h1>MYSN MURDER</h1>
-      <p class="subtitle">Play from any phone • No computer needed</p>
-      <input id="playerName" placeholder="Your name" maxlength="12" autocomplete="off" />
-      <button id="btnCreate">Create & Play</button>
-      <button id="btnCreateHost" class="hostonly">Create as Host Only</button>
-      <div class="row" style="margin-top:14px">
-        <input id="joinCode" placeholder="CODE" maxlength="4" style="width:110px; text-transform:uppercase; letter-spacing:3px" />
-        <button id="btnJoin" class="secondary" style="width:auto; padding:14px 20px">Join</button>
-      </div>
-    </div>
-
-    <div id="lobbyScreen" class="screen">
-      <p style="color:#8b949e; font-size:0.9rem">Room Code</p>
-      <div class="code-big" id="roomCodeDisplay">----</div>
-      <p class="subtitle" id="shareInfo">Share this code with friends</p>
-      <div id="lobbyPlayers"></div>
-      <div id="hostControls" class="hidden">
-        <div class="slider-row">
-          <label>Bots</label>
-          <span id="botCountLabel">3</span>
-          <input type="range" id="botSlider" min="0" max="8" value="3" />
-        </div>
-        <div class="slider-row">
-          <label>Impostors</label>
-          <span id="impLabel">1</span>
-          <input type="range" id="impSlider" min="1" max="3" value="1" />
-        </div>
-        <button id="btnStart" style="margin-top:18px">Start Game</button>
-      </div>
-      <p id="waitingText" class="subtitle">Waiting for host...</p>
-      <p id="hostOnlyNote" class="subtitle hidden" style="color:#1C9455">You are Host Only – you will not play</p>
-    </div>
-
-    <div id="gameScreen" class="screen">
-      <div id="gameWrapper">
-        <canvas id="gameCanvas"></canvas>
-        <div id="hud">
-          <div class="hud-box" id="taskList">
-            <strong style="color:#1C9455">Tasks</strong>
-            <div id="tasksContent">—</div>
-          </div>
-          <div class="hud-box" id="roleBadge">Role: ???</div>
-        </div>
-        <div id="mobileControls">
-          <div id="joystickZone">
-            <div id="joystickBase"><div id="joystickKnob"></div></div>
-          </div>
-          <div id="actionButtons">
-            <button class="action-btn" id="btnKill">KILL</button>
-            <button class="action-btn" id="btnReport">REPORT</button>
-            <button class="action-btn" id="btnUse">USE</button>
-            <button class="action-btn" id="btnMeeting">MEET</button>
-          </div>
-        </div>
-        <div id="meetingOverlay">
-          <h2 id="meetingReason">Emergency Meeting</h2>
-          <p id="meetingTimer" style="color:#8b949e">Discussion...</p>
-          <div id="voteList"></div>
-          <button id="btnSkip" class="secondary" style="width:auto; margin-top:8px">Skip Vote</button>
-        </div>
-        <div id="roleReveal">
-          <p style="color:#8b949e">You are the</p>
-          <div id="roleText">CREWMATE</div>
-          <p id="roleDesc" style="color:#8b949e; max-width:280px">Complete tasks and find the murderer</p>
-          <button id="btnRoleOk" style="margin-top:28px; width:auto">Got it</button>
-        </div>
-        <div id="toast"></div>
-      </div>
-    </div>
-
-    <div id="endScreen" class="screen">
-      <h1 id="endTitle">Victory</h1>
-      <p id="endSubtitle" class="subtitle"></p>
-      <div id="endPlayers" style="margin:20px 0; max-height:200px; overflow-y:auto"></div>
-      <button id="btnBackMenu">Play Again</button>
+<div id="app">
+  <div id="menu" class="screen active">
+    <h1>MYSN MURDER</h1>
+    <p class="sub">No computer needed</p>
+    <input id="name" placeholder="Your name" maxlength="12"/>
+    <button type="button" id="btnPlay">Create &amp; Play</button>
+    <button type="button" id="btnHost" class="host">Create as Host Only</button>
+    <div class="row" style="margin-top:12px">
+      <input id="codeIn" placeholder="CODE" maxlength="4" style="width:110px;text-transform:uppercase;letter-spacing:3px"/>
+      <button type="button" id="btnJoin" class="sec" style="width:auto;padding:14px 20px">Join</button>
     </div>
   </div>
-  <script src="client.js"></script>
+
+  <div id="lobby" class="screen">
+    <p style="color:#8b949e">Room Code</p>
+    <div class="code" id="codeOut">----</div>
+    <p class="sub" id="share">Share this code</p>
+    <div id="players"></div>
+    <div id="hostUI" class="hidden">
+      <div class="slider"><label>Bots</label><span id="botL">3</span><input type="range" id="botS" min="0" max="8" value="3"/></div>
+      <div class="slider"><label>Impostors</label><span id="impL">1</span><input type="range" id="impS" min="1" max="3" value="1"/></div>
+      <button type="button" id="btnStart" style="margin-top:12px">Start Game</button>
+    </div>
+    <p class="sub" id="wait">Waiting for host...</p>
+    <p class="sub hidden" id="hostNote" style="color:#1C9455">You are Host Only</p>
+  </div>
+
+  <div id="game" class="screen">
+    <div id="gameWrap">
+      <canvas id="cv"></canvas>
+      <div id="hud">
+        <div class="box"><strong style="color:#1C9455">Tasks</strong><div id="tasks">—</div></div>
+        <div class="box" id="roleB">Role: ???</div>
+      </div>
+      <div id="mobile">
+        <div id="joy"><div id="joyBase"><div id="joyKnob"></div></div></div>
+        <div id="acts">
+          <button type="button" class="abtn" id="k">KILL</button>
+          <button type="button" class="abtn" id="r">REPORT</button>
+          <button type="button" class="abtn" id="u">USE</button>
+          <button type="button" class="abtn" id="m">MEET</button>
+        </div>
+      </div>
+      <div id="meet">
+        <h2 id="meetR">Meeting</h2>
+        <p id="meetT" style="color:#8b949e">...</p>
+        <div id="votes"></div>
+        <button type="button" id="btnSkip" class="sec" style="width:auto">Skip</button>
+      </div>
+      <div id="role">
+        <p style="color:#8b949e">You are the</p>
+        <div id="roleT" style="font-size:2.5rem;font-weight:900;margin:12px 0">CREWMATE</div>
+        <p id="roleD" style="color:#8b949e">...</p>
+        <button type="button" id="btnRoleOk" style="margin-top:24px;width:auto">Got it</button>
+      </div>
+      <div id="toast"></div>
+    </div>
+  </div>
+
+  <div id="end" class="screen">
+    <h1 id="endT">Victory</h1>
+    <p class="sub" id="endS"></p>
+    <div id="endP" style="margin:16px 0"></div>
+    <button type="button" id="btnAgain">Play Again</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  function $(id){return document.getElementById(id)}
+  function show(id){
+    ['menu','lobby','game','end'].forEach(function(s){
+      var el=$(s); if(el) el.classList.toggle('active', s===id);
+    });
+  }
+  function toast(msg, col){
+    var t=$('toast');
+    if(!t){ alert(msg); return; }
+    t.textContent=msg;
+    t.style.background=col||'#1C9455';
+    t.style.display='block';
+    clearTimeout(t._tm);
+    t._tm=setTimeout(function(){t.style.display='none'},3000);
+  }
+
+  var ws=null, myId=null, myRole=null, myTasks=[], state=null;
+  var isHost=false, hostOnly=false, keys={}, cv, ctx, anim=null;
+  var mobile=false, joy={a:false,dx:0,dy:0}, lastMv=0;
+  var params=new URLSearchParams(location.search);
+  var urlCode=(params.get('room')||'').toUpperCase();
+
+  function send(type, data){
+    if(ws && ws.readyState===1) ws.send(JSON.stringify({type:type, data:data||{}}));
+  }
+
+  function connect(code, asHostOnly){
+    hostOnly=!!asHostOnly;
+    toast('Connecting...');
+    var proto=location.protocol==='https:'?'wss':'ws';
+    var url=proto+'://'+location.host+'/ws/'+code;
+    try{ ws=new WebSocket(url); }catch(e){ toast('Failed: '+e.message,'#da3633'); return; }
+
+    ws.onopen=function(){
+      var n=($('name')&&$('name').value.trim())||(asHostOnly?'Host':'Player');
+      send('join',{name:n, code:code, hostOnly:!!asHostOnly});
+      toast('Connected!');
+    };
+    ws.onmessage=function(e){
+      var msg; try{msg=JSON.parse(e.data)}catch(err){return}
+      onMsg(msg);
+    };
+    ws.onerror=function(){ toast('Connection error','#da3633'); };
+    ws.onclose=function(){};
+  }
+
+  function onMsg(msg){
+    var t=msg.type, d=msg.data;
+    if(t==='joined'){
+      myId=d.id; isHost=d.isHost; hostOnly=!!d.hostOnly; state=d.state;
+      $('codeOut').textContent=d.state.code;
+      $('share').textContent='Share: '+location.origin+'?room='+d.state.code;
+      if(isHost){ $('hostUI').classList.remove('hidden'); $('wait').classList.add('hidden'); }
+      else { $('hostUI').classList.add('hidden'); $('wait').classList.remove('hidden'); }
+      if(hostOnly) $('hostNote').classList.remove('hidden');
+      else $('hostNote').classList.add('hidden');
+      fillLobby(d.state);
+      show('lobby');
+      try{history.replaceState(null,'','?room='+d.state.code)}catch(e){}
+    }
+    else if(t==='update'){ state=d; if(d&&d.state==='lobby') fillLobby(d); }
+    else if(t==='settings'){ if(state) state.settings=d; }
+    else if(t==='role'){
+      if(hostOnly) return;
+      myRole=d.role; myTasks=d.tasks||[];
+      $('roleB').textContent='Role: '+myRole.toUpperCase();
+      $('roleB').style.color=myRole==='impostor'?'#ff4757':'#1C9455';
+      $('roleT').textContent=myRole.toUpperCase();
+      $('roleT').style.color=myRole==='impostor'?'#ff4757':'#1C9455';
+      $('roleD').textContent=myRole==='impostor'?'Kill without getting caught':'Do tasks and find impostor';
+      $('role').classList.add('on');
+    }
+    else if(t==='started'){
+      state=d;
+      if(hostOnly){ $('roleB').textContent='HOST'; $('roleB').style.color='#1C9455'; $('tasks').textContent='Spectator'; }
+      show('game'); initCv(); detectMob(); loop(); if(!hostOnly) updTasks();
+    }
+    else if(t==='moved'){
+      if(!state||!state.players)return;
+      var p=state.players.find(function(x){return x.id===d.id});
+      if(p){p.x=d.x;p.y=d.y}
+    }
+    else if(t==='killed'){
+      toast('Body found!','#da3633');
+      if(state&&state.players){ var v=state.players.find(function(x){return x.id===d.victimId}); if(v)v.alive=false; }
+    }
+    else if(t==='taskDone'){ toast('Task done ('+d.completed+'/'+d.total+')'); updTasks(); }
+    else if(t==='meeting'){
+      $('meetR').textContent=d.reason; $('meet').classList.add('on');
+      var list=$('votes'); list.innerHTML='';
+      (d.players||[]).filter(function(p){return p.alive&&!p.hostOnly}).forEach(function(p){
+        var b=document.createElement('button'); b.type='button'; b.className='vbtn';
+        b.innerHTML='<div class="dot" style="background:'+p.color+'"></div>'+p.name;
+        b.onclick=function(){
+          if(hostOnly)return;
+          list.querySelectorAll('.vbtn').forEach(function(x){x.classList.remove('sel')});
+          b.classList.add('sel'); send('vote',{targetId:p.id});
+        };
+        list.appendChild(b);
+      });
+      var left=(d.discussion||25)+(d.voting||40);
+      var iv=setInterval(function(){
+        left--; $('meetT').textContent=left>(d.voting||40)?'Discussion: '+(left-(d.voting||40))+'s':'Voting: '+left+'s';
+        if(left<=0)clearInterval(iv);
+      },1000);
+    }
+    else if(t==='meetingEnd'){
+      $('meet').classList.remove('on');
+      if(d.tie||!d.ejected) toast('No one ejected');
+      else toast(d.ejected.name+' ejected ('+d.ejected.role+')','#da3633');
+    }
+    else if(t==='gameOver'){
+      if(anim) cancelAnimationFrame(anim);
+      show('end');
+      if(d.winner==='crew'){ $('endT').textContent='CREWMATES WIN'; $('endT').style.color='#1C9455'; $('endS').textContent='Crew wins!'; }
+      else { $('endT').textContent='IMPOSTORS WIN'; $('endT').style.color='#ff4757'; $('endS').textContent='Impostors win!'; }
+      var box=$('endP'); box.innerHTML='';
+      (d.players||[]).filter(function(p){return !p.hostOnly}).forEach(function(p){
+        var div=document.createElement('div'); div.style.margin='6px';
+        div.innerHTML='<span style="color:'+p.color+'">●</span> '+p.name+' — <b>'+(p.role||'?')+'</b>'+(p.isBot?' 🤖':'');
+        box.appendChild(div);
+      });
+    }
+    else if(t==='error') toast(d,'#da3633');
+  }
+
+  function fillLobby(st){
+    state=st; var c=$('players'); c.innerHTML='';
+    (st.players||[]).forEach(function(p){
+      var chip=document.createElement('div'); chip.className='chip';
+      var lab=p.name+(p.isBot?' 🤖':'')+(p.hostOnly?' (Host)':'');
+      chip.innerHTML='<div class="dot" style="background:'+(p.color||'#1C9455')+'"></div>'+lab;
+      c.appendChild(chip);
+    });
+  }
+
+  function code4(){
+    var ch='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s='';
+    for(var i=0;i<4;i++) s+=ch[Math.floor(Math.random()*ch.length)];
+    return s;
+  }
+
+  // BUTTONS — always attached
+  $('btnPlay').onclick=function(){ connect(code4(), false); };
+  $('btnHost').onclick=function(){ connect(code4(), true); };
+  $('btnJoin').onclick=function(){
+    var c=($('codeIn').value||'').trim().toUpperCase();
+    if(c.length!==4) return toast('Enter 4-letter code','#da3633');
+    connect(c, false);
+  };
+  if(urlCode.length===4) $('codeIn').value=urlCode;
+
+  $('botS').oninput=function(e){ $('botL').textContent=e.target.value; send('settings',{botCount:+e.target.value}); };
+  $('impS').oninput=function(e){ $('impL').textContent=e.target.value; send('settings',{impostors:+e.target.value}); };
+  $('btnStart').onclick=function(){ send('start'); };
+  $('btnRoleOk').onclick=function(){ $('role').classList.remove('on'); };
+  $('btnSkip').onclick=function(){ if(!hostOnly){ send('vote',{targetId:null}); toast('Skipped'); } };
+  $('btnAgain').onclick=function(){ location.href=location.pathname; };
+
+  function initCv(){
+    cv=$('cv'); ctx=cv.getContext('2d');
+    function resize(){
+      cv.width=cv.clientWidth*devicePixelRatio;
+      cv.height=cv.clientHeight*devicePixelRatio;
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    }
+    resize(); window.addEventListener('resize',resize);
+  }
+
+  function detectMob(){
+    mobile=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+    if(mobile && !hostOnly){
+      $('mobile').classList.add('on');
+      setupJoy(); setupAct();
+    }
+  }
+
+  window.addEventListener('keydown',function(e){ keys[e.key.toLowerCase()]=true; });
+  window.addEventListener('keyup',function(e){ keys[e.key.toLowerCase()]=false; });
+  window.addEventListener('keydown',function(e){
+    if(hostOnly)return;
+    if(e.key==='q'||e.key==='Q') tryKill();
+    if(e.key==='r'||e.key==='R') send('report');
+    if(e.key==='e'||e.key==='E') tryTask();
+    if(e.key==='f'||e.key==='F') send('emergency');
+  });
+
+  function setupJoy(){
+    var zone=$('joy'), knob=$('joyKnob'), max=40;
+    function st(e){e.preventDefault();joy.a=true}
+    function mv(e){
+      if(!joy.a)return; e.preventDefault();
+      var t=e.touches?e.touches[0]:e, r=zone.getBoundingClientRect();
+      var dx=t.clientX-(r.left+r.width/2), dy=t.clientY-(r.top+r.height/2);
+      var d=Math.hypot(dx,dy); if(d>max){dx=dx/d*max;dy=dy/d*max}
+      knob.style.transform='translate(calc(-50% + '+dx+'px), calc(-50% + '+dy+'px))';
+      joy.dx=dx/max; joy.dy=dy/max;
+    }
+    function en(e){e.preventDefault();joy.a=false;joy.dx=joy.dy=0;knob.style.transform='translate(-50%,-50%)'}
+    zone.addEventListener('touchstart',st,{passive:false});
+    zone.addEventListener('touchmove',mv,{passive:false});
+    zone.addEventListener('touchend',en,{passive:false});
+    zone.addEventListener('mousedown',st);
+    window.addEventListener('mousemove',mv);
+    window.addEventListener('mouseup',en);
+  }
+
+  function setupAct(){
+    $('k').onclick=tryKill; $('r').onclick=function(){send('report')};
+    $('u').onclick=tryTask; $('m').onclick=function(){send('emergency')};
+  }
+
+  function tryKill(){
+    if(hostOnly||myRole!=='impostor'||!state)return;
+    var me=state.players.find(function(p){return p.id===myId});
+    if(!me||!me.alive)return;
+    var closest=null,min=85;
+    state.players.forEach(function(p){
+      if(p.id===myId||!p.alive||p.hostOnly)return;
+      var d=Math.hypot(p.x-me.x,p.y-me.y); if(d<min){min=d;closest=p}
+    });
+    if(closest) send('kill',{targetId:closest.id});
+  }
+
+  function tryTask(){
+    if(hostOnly||myRole!=='crewmate'||!myTasks.length)return;
+    var t=myTasks.find(function(x){return !x.done});
+    if(t){ send('task',{taskId:t.id}); t.done=true; updTasks(); }
+  }
+
+  function updTasks(){
+    var el=$('tasks');
+    if(hostOnly){el.textContent='Spectator';return}
+    if(myRole==='impostor'){el.innerHTML='<div style="color:#ff4757">Kill</div>';return}
+    if(!myTasks.length){el.textContent='—';return}
+    el.innerHTML=myTasks.map(function(t){return '<div style="'+(t.done?'text-decoration:line-through;color:#1C9455':'')+'">'+t.name+'</div>'}).join('');
+  }
+
+  function loop(){
+    function frame(){ update(); draw(); anim=requestAnimationFrame(frame); }
+    frame();
+  }
+
+  function update(){
+    if(hostOnly||!state||state.state!=='playing')return;
+    var me=state.players.find(function(p){return p.id===myId});
+    if(!me||!me.alive)return;
+    var dx=0,dy=0,spd=3.4;
+    if(keys.w||keys.arrowup)dy-=1; if(keys.s||keys.arrowdown)dy+=1;
+    if(keys.a||keys.arrowleft)dx-=1; if(keys.d||keys.arrowright)dx+=1;
+    if(joy.a){dx+=joy.dx;dy+=joy.dy}
+    if(dx||dy){
+      var len=Math.hypot(dx,dy)||1;
+      me.x+=(dx/len)*spd; me.y+=(dy/len)*spd;
+      me.x=Math.max(20,Math.min(780,me.x)); me.y=Math.max(20,Math.min(580,me.y));
+      var now=Date.now();
+      if(now-lastMv>35){ send('move',{x:me.x,y:me.y}); lastMv=now; }
+    }
+  }
+
+  function draw(){
+    if(!ctx||!state)return;
+    var w=cv.clientWidth, h=cv.clientHeight;
+    ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,w,h);
+    var scale=Math.min(w/800,h/600), ox=(w-800*scale)/2, oy=(h-600*scale)/2;
+    ctx.save(); ctx.translate(ox,oy); ctx.scale(scale,scale);
+    var rooms=[
+      {x:40,y:40,w:220,h:160,c:'#1a2332',l:'Cafeteria'},
+      {x:290,y:40,w:220,h:130,c:'#1a2a1a',l:'Medbay'},
+      {x:540,y:40,w:220,h:160,c:'#2a1a1a',l:'Electrical'},
+      {x:40,y:240,w:200,h:160,c:'#1a1a2a',l:'Security'},
+      {x:280,y:210,w:240,h:180,c:'#2a2a1a',l:'Admin'},
+      {x:540,y:240,w:220,h:160,c:'#1a2a2a',l:'Weapons'},
+      {x:140,y:450,w:520,h:110,c:'#1c1c22',l:'Hallway'}
+    ];
+    rooms.forEach(function(r){
+      ctx.fillStyle=r.c; ctx.fillRect(r.x,r.y,r.w,r.h);
+      ctx.strokeStyle='#30363d'; ctx.strokeRect(r.x,r.y,r.w,r.h);
+      ctx.fillStyle='#6e7681'; ctx.font='bold 12px sans-serif'; ctx.fillText(r.l,r.x+10,r.y+20);
+    });
+    (state.bodies||[]).forEach(function(b){
+      ctx.globalAlpha=.5; ctx.beginPath(); ctx.ellipse(b.x,b.y+6,18,10,0,0,Math.PI*2);
+      ctx.fillStyle=b.color; ctx.fill(); ctx.globalAlpha=1;
+      ctx.font='14px serif'; ctx.fillText('💀',b.x-8,b.y-10);
+    });
+    (state.players||[]).forEach(function(p){
+      if(!p.alive||p.hostOnly)return;
+      ctx.beginPath(); ctx.arc(p.x,p.y,16,0,Math.PI*2); ctx.fillStyle=p.color; ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle='#e6edf3'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(p.name+(p.isBot?' 🤖':''),p.x,p.y-22);
+      if(p.id===myId){ ctx.beginPath(); ctx.arc(p.x,p.y,22,0,Math.PI*2); ctx.strokeStyle='#1C9455'; ctx.lineWidth=2; ctx.stroke(); }
+    });
+    ctx.restore();
+  }
+
+  toast('Ready — click a button', '#1C9455');
+  console.log('MYSN MURDER ready');
+})();
+</script>
 </body>
 </html>
