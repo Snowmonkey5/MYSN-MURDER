@@ -1,122 +1,120 @@
 # MYSN MURDER
 
-**Among Us style social deduction game** for players on the **same WiFi / local network**.
+**Among Us style multiplayer** that runs entirely on **Cloudflare**.
 
-- No database needed (everything stays in memory)
-- **Bots automatically fill empty slots**
-- Full **mobile controls** (virtual joystick + action buttons)
-- Desktop keyboard support too
-- Create/join rooms with 4-letter codes
+- **No computer needed** to host
+- **No database**
+- Works from any phone or laptop
+- Bots fill empty slots
+- Full mobile controls (joystick + buttons)
+- Shareable room links
 
 ---
 
-## Quick Start
+## Play Online (Recommended)
 
-### 1. Requirements
-- Node.js 18 or newer
+### 1. Create a free Cloudflare account
+Go to [https://dash.cloudflare.com](https://dash.cloudflare.com) and sign up.
 
-### 2. Install & Run
+### 2. Install & Deploy
 
 ```bash
 git clone https://github.com/Snowmonkey5/MYSN-MURDER.git
 cd MYSN-MURDER
 npm install
-npm start
+npx wrangler login
+npm run deploy
 ```
 
-You will see something like:
+After deploy finishes you will get a URL like:
 
 ```
-========================================
-   MYSN MURDER - Server Running!
-========================================
-  Local:   http://localhost:3000
-  Network: http://192.168.x.x:3000
-  Share the Network URL with friends on the same WiFi
-========================================
+https://mysn-murder.YOUR-SUBDOMAIN.workers.dev
 ```
 
 ### 3. Play
 
-- **Host**: Open the Network URL (or localhost) → Create Room → set number of bots → Start Game
-- **Friends**: Open the same Network URL on their phone/PC → enter the 4-letter code → Join
+- Open that URL on your **phone or computer**
+- Tap **Create Room**
+- Share the code (or the link `?room=XXXX`) with friends
+- They open the same site → enter the code → Join
+- Host sets bots + impostors → Start Game
 
-Everyone must be on the **same WiFi**.
+That’s it. No computer has to stay on.
+
+---
+
+## Local version (optional)
+
+If you still want to run it on your own computer on the same WiFi:
+
+```bash
+npm install
+npm start
+```
+
+Then open the Network IP shown in the terminal.
 
 ---
 
 ## Features
 
-| Feature              | Status |
-|----------------------|--------|
-| LAN multiplayer      | ✅     |
-| Bots fill slots      | ✅     |
-| Mobile joystick      | ✅     |
-| Kill / Report / Meet | ✅     |
-| Tasks (crew)         | ✅     |
-| Voting meetings      | ✅     |
-| Role reveal          | ✅     |
-| No database          | ✅     |
+| Feature                    | Status |
+|---------------------------|--------|
+| No computer needed        | ✅     |
+| No database               | ✅     |
+| Works on mobile           | ✅     |
+| Bots fill slots           | ✅     |
+| Virtual joystick          | ✅     |
+| Kill / Report / Meeting   | ✅     |
+| Tasks + Voting            | ✅     |
+| Shareable room links      | ✅     |
+| Internet play             | ✅     |
 
 ### Controls
 
-**Desktop**
-- `WASD` or Arrow keys → Move
-- `Q` → Kill (impostor)
-- `R` → Report body
-- `E` → Complete task
-- `F` → Emergency meeting
-
-**Mobile**
-- Left virtual joystick → Move
+**Phone**
+- Left joystick → Move
 - Right buttons → KILL / REPORT / USE / MEET
 
----
-
-## How bots work
-
-In the lobby the host can set **Bots to add** (0–8).
-
-When the game starts the server automatically creates the bots.  
-Bot behaviour:
-- Wander around the map
-- Crewmate bots slowly complete tasks
-- Impostor bots try to kill nearby crewmates (with cooldown)
-
-You can play completely alone with bots if you want.
+**Computer**
+- WASD / Arrows → Move
+- Q → Kill
+- R → Report
+- E → Task
+- F → Emergency Meeting
 
 ---
 
-## Project Structure
+## How it works
+
+- Each room is a **Cloudflare Durable Object**
+- All game state lives in memory inside that object
+- When the last player leaves, the room disappears
+- Zero traditional database
+
+---
+
+## Project structure
 
 ```
 MYSN-MURDER/
-├── package.json
-├── server.js          # Game server + bot AI (in-memory only)
-└── public/
-    ├── index.html     # UI + mobile layout
-    └── client.js      # Client logic, canvas, joystick
+├── wrangler.toml          # Cloudflare config
+├── src/
+│   ├── index.js           # Worker entry
+│   └── room.js            # Durable Object (game logic + bots)
+├── public/
+│   ├── index.html         # Beautiful mobile-first UI
+│   └── client.js          # Client + canvas + joystick
+└── server.js              # Optional local Node version
 ```
-
----
-
-## Cloudflare (optional – for online play later)
-
-This version is pure LAN (no database).  
-If you later want friends to join from anywhere, you can move the same logic to:
-
-- **Cloudflare Workers** + **Durable Objects**
-- Each room = one Durable Object (keeps state in memory)
-- WebSockets for real-time updates
-
-No traditional database is required even then.
 
 ---
 
 ## Tips
 
-- Use at least 4–6 total players (humans + bots) for a fun game
-- On mobile, add the site to your home screen for a more app-like feel
-- Firewall may block the port – allow Node.js / port 3000 if friends can’t connect
+- Use 4–8 total players (humans + bots) for the best experience
+- Add the site to your phone home screen for an app-like feel
+- Room codes are 4 characters (easy to share by voice)
 
 Enjoy **MYSN MURDER**!
