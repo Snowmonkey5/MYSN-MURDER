@@ -46,7 +46,8 @@ canvas{display:block;width:100%;height:100%}
 #votes{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:360px;margin:16px 0}
 .vbtn{background:#21262d;border:2px solid #30363d;border-radius:12px;padding:10px 14px;color:#fff;display:flex;align-items:center;gap:8px;cursor:pointer}
 .vbtn.sel{border-color:#1C9455}
-#toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:#1C9455;color:#fff;padding:12px 20px;border-radius:10px;font-weight:700;display:none;z-index:100;white-space:nowrap}
+#toast{position:absolute;top:50px;left:50%;transform:translateX(-50%);background:#1C9455;color:#fff;padding:12px 16px;border-radius:10px;font-weight:700;display:none;z-index:100;max-width:90vw;text-align:center;font-size:14px}
+#errBox{position:fixed;bottom:0;left:0;right:0;background:#3d1111;color:#ffb4b4;padding:12px;font-size:12px;display:none;z-index:200;max-height:30vh;overflow:auto;white-space:pre-wrap;font-family:monospace}
 </style>
 </head>
 <body>
@@ -55,12 +56,13 @@ canvas{display:block;width:100%;height:100%}
     <h1>MYSN MURDER</h1>
     <p class="sub">No computer needed</p>
     <input id="name" placeholder="Your name" maxlength="12"/>
-    <button type="button" id="btnPlay">Create &amp; Play</button>
+    <button type="button" id="btnPlay">Create & Play</button>
     <button type="button" id="btnHost" class="host">Create as Host Only</button>
     <div class="row" style="margin-top:12px">
       <input id="codeIn" placeholder="CODE" maxlength="4" style="width:110px;text-transform:uppercase;letter-spacing:3px"/>
       <button type="button" id="btnJoin" class="sec" style="width:auto;padding:14px 20px">Join</button>
     </div>
+    <p class="sub" style="margin-top:16px;font-size:12px"><a href="/debug" style="color:#1C9455">/debug</a> — check server</p>
   </div>
 
   <div id="lobby" class="screen">
@@ -116,6 +118,7 @@ canvas{display:block;width:100%;height:100%}
     <button type="button" id="btnAgain">Play Again</button>
   </div>
 </div>
+<div id="errBox"></div>
 
 <script>
 (function(){
@@ -132,7 +135,13 @@ canvas{display:block;width:100%;height:100%}
     t.style.background=col||'#1C9455';
     t.style.display='block';
     clearTimeout(t._tm);
-    t._tm=setTimeout(function(){t.style.display='none'},3000);
+    t._tm=setTimeout(function(){t.style.display='none'},5000);
+  }
+  function showErr(msg){
+    var b=$('errBox');
+    if(!b) return;
+    b.style.display='block';
+    b.textContent=(b.textContent?b.textContent+'\n':'')+msg;
   }
 
   var ws=null, myId=null, myRole=null, myTasks=[], state=null;
@@ -143,26 +152,36 @@ canvas{display:block;width:100%;height:100%}
 
   function send(type, data){
     if(ws && ws.readyState===1) ws.send(JSON.stringify({type:type, data:data||{}}));
+    else showErr('send failed — not connected (state='+(ws?ws.readyState:'null')+')');
   }
 
   function connect(code, asHostOnly){
     hostOnly=!!asHostOnly;
-    toast('Connecting...');
+    toast('Connecting to /ws/'+code+' ...');
+    showErr('Connecting: wss://'+location.host+'/ws/'+code);
     var proto=location.protocol==='https:'?'wss':'ws';
     var url=proto+'://'+location.host+'/ws/'+code;
-    try{ ws=new WebSocket(url); }catch(e){ toast('Failed: '+e.message,'#da3633'); return; }
+    try{ ws=new WebSocket(url); }catch(e){ toast('WS create failed: '+e.message,'#da3633'); showErr(String(e)); return; }
 
     ws.onopen=function(){
+      showErr('WebSocket OPEN');
       var n=($('name')&&$('name').value.trim())||(asHostOnly?'Host':'Player');
       send('join',{name:n, code:code, hostOnly:!!asHostOnly});
-      toast('Connected!');
+      toast('Connected! Joining...');
     };
     ws.onmessage=function(e){
-      var msg; try{msg=JSON.parse(e.data)}catch(err){return}
+      showErr('MSG: '+String(e.data).slice(0,120));
+      var msg; try{msg=JSON.parse(e.data)}catch(err){ showErr('bad json'); return; }
       onMsg(msg);
     };
-    ws.onerror=function(){ toast('Connection error','#da3633'); };
-    ws.onclose=function(){};
+    ws.onerror=function(ev){
+      toast('WebSocket error','#da3633');
+      showErr('WS error event');
+    };
+    ws.onclose=function(ev){
+      toast('Closed code='+ev.code+' '+ (ev.reason||''),'#da3633');
+      showErr('WS closed code='+ev.code+' reason='+(ev.reason||'(none)')+' clean='+ev.wasClean);
+    };
   }
 
   function onMsg(msg){
@@ -177,6 +196,7 @@ canvas{display:block;width:100%;height:100%}
       else $('hostNote').classList.add('hidden');
       fillLobby(d.state);
       show('lobby');
+      toast('In lobby!');
       try{history.replaceState(null,'','?room='+d.state.code)}catch(e){}
     }
     else if(t==='update'){ state=d; if(d&&d.state==='lobby') fillLobby(d); }
@@ -242,7 +262,7 @@ canvas{display:block;width:100%;height:100%}
         box.appendChild(div);
       });
     }
-    else if(t==='error') toast(d,'#da3633');
+    else if(t==='error') { toast(d,'#da3633'); showErr('server error: '+d); }
   }
 
   function fillLobby(st){
@@ -261,7 +281,6 @@ canvas{display:block;width:100%;height:100%}
     return s;
   }
 
-  // BUTTONS — always attached
   $('btnPlay').onclick=function(){ connect(code4(), false); };
   $('btnHost').onclick=function(){ connect(code4(), true); };
   $('btnJoin').onclick=function(){
@@ -415,8 +434,8 @@ canvas{display:block;width:100%;height:100%}
     ctx.restore();
   }
 
-  toast('Ready — click a button', '#1C9455');
-  console.log('MYSN MURDER ready');
+  toast('Ready — click Create');
+  showErr('JS loaded OK. Click Create & Play.');
 })();
 </script>
 </body>
