@@ -2,115 +2,141 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>MYSN MURDER</title>
+  <meta name="theme-color" content="#0d1117" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body {
+    html, body {
+      height: 100%;
       background: #0d1117;
       color: #e6edf3;
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       overflow: hidden;
-      height: 100vh;
-      width: 100vw;
       touch-action: none;
+      user-select: none;
     }
     #app { width: 100%; height: 100%; position: relative; }
 
-    /* Screens */
-    .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+    .screen {
+      display: none;
+      width: 100%; height: 100%;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+      text-align: center;
+    }
     .screen.active { display: flex; }
 
     h1 {
-      font-size: clamp(1.8rem, 6vw, 2.8rem);
-      background: linear-gradient(90deg, #ff4757, #ff6b81);
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #ff4757, #ff6b81, #ffa502);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-      letter-spacing: 2px;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
     }
-    .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 0.95rem; }
+    .subtitle { color: #8b949e; font-size: 0.95rem; margin-bottom: 28px; }
 
     input, button, select {
-      font-size: 16px; /* prevents iOS zoom */
-      border-radius: 10px;
+      font-size: 16px;
+      border-radius: 12px;
       border: none;
-      padding: 12px 16px;
+      padding: 14px 18px;
       margin: 6px 0;
-      width: min(280px, 90vw);
+      width: min(300px, 92vw);
     }
     input {
       background: #21262d;
       color: #e6edf3;
       border: 1px solid #30363d;
+      text-align: center;
     }
+    input:focus { outline: 2px solid #58a6ff; border-color: transparent; }
     button {
-      background: #238636;
+      background: linear-gradient(180deg, #2ea043, #238636);
       color: white;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      transition: transform 0.1s, background 0.2s;
+      transition: transform 0.12s, filter 0.15s;
+      box-shadow: 0 4px 14px rgba(35,134,54,0.35);
     }
-    button:active { transform: scale(0.96); }
-    button.secondary { background: #30363d; }
-    button.danger { background: #da3633; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:active { transform: scale(0.97); }
+    button.secondary {
+      background: #30363d;
+      box-shadow: none;
+    }
+    button.danger {
+      background: linear-gradient(180deg, #f85149, #da3633);
+      box-shadow: 0 4px 14px rgba(218,54,51,0.35);
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
-    .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 320px; }
 
     /* Lobby */
     #lobbyPlayers {
-      display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
-      max-width: 500px; margin: 16px 0; max-height: 200px; overflow-y: auto;
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+      max-width: 420px; margin: 18px 0; max-height: 180px; overflow-y: auto;
     }
     .player-chip {
       display: flex; align-items: center; gap: 8px;
-      background: #21262d; padding: 8px 12px; border-radius: 20px;
+      background: #21262d;
+      padding: 8px 14px;
+      border-radius: 24px;
       font-size: 0.9rem;
+      border: 1px solid #30363d;
     }
-    .color-dot { width: 14px; height: 14px; border-radius: 50%; }
+    .color-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 
-    /* Game canvas area */
-    #gameScreen { padding: 0; justify-content: flex-start; }
+    .code-big {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: #58a6ff;
+      margin: 8px 0 4px;
+    }
+
+    /* Game */
+    #gameScreen { padding: 0; }
     #gameWrapper {
       position: relative;
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       overflow: hidden;
-      background: #161b22;
+      background: #0d1117;
     }
     canvas {
       display: block;
-      width: 100%;
-      height: 100%;
-      background: #0d1117;
+      width: 100%; height: 100%;
       touch-action: none;
     }
 
-    /* HUD */
     #hud {
       position: absolute; top: 0; left: 0; right: 0;
-      padding: 10px 12px;
+      padding: 12px;
       display: flex; justify-content: space-between; align-items: flex-start;
-      pointer-events: none;
-      z-index: 10;
+      pointer-events: none; z-index: 10;
+      gap: 8px;
     }
     #hud > * { pointer-events: auto; }
     .hud-box {
-      background: rgba(13,17,23,0.85);
+      background: rgba(13,17,23,0.88);
+      backdrop-filter: blur(8px);
       border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 8px 12px;
-      font-size: 0.85rem;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
     }
-    #taskList { max-width: 180px; }
-    #taskList div { margin: 2px 0; }
-    .task-done { text-decoration: line-through; color: #3fb950; }
+    #taskList { max-width: 160px; text-align: left; }
+    #taskList div { margin: 3px 0; }
+    .task-done { text-decoration: line-through; color: #3fb950; opacity: 0.8; }
 
     /* Mobile controls */
     #mobileControls {
       position: absolute; bottom: 0; left: 0; right: 0;
-      height: 180px;
+      height: 190px;
       pointer-events: none;
       z-index: 20;
       display: none;
@@ -118,83 +144,110 @@
     #mobileControls.visible { display: block; }
 
     #joystickZone {
-      position: absolute; left: 20px; bottom: 30px;
-      width: 130px; height: 130px;
+      position: absolute; left: 18px; bottom: 28px;
+      width: 128px; height: 128px;
       pointer-events: auto;
     }
     #joystickBase {
-      width: 130px; height: 130px;
+      width: 128px; height: 128px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.08);
-      border: 2px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07);
+      border: 2px solid rgba(255,255,255,0.14);
       position: relative;
     }
     #joystickKnob {
-      width: 55px; height: 55px;
+      width: 52px; height: 52px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.32);
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      touch-action: none;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
     }
 
     #actionButtons {
-      position: absolute; right: 16px; bottom: 30px;
-      display: flex; flex-direction: column; gap: 12px;
+      position: absolute; right: 14px; bottom: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
       pointer-events: auto;
     }
     .action-btn {
-      width: 64px; height: 64px;
+      width: 62px; height: 62px;
       border-radius: 50%;
       border: none;
-      font-size: 13px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 800;
       color: white;
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+      letter-spacing: 0.3px;
     }
     #btnKill { background: #da3633; }
     #btnReport { background: #d29922; }
     #btnUse { background: #1f6feb; }
     #btnMeeting { background: #8957e5; }
 
-    /* Meeting overlay */
-    #meetingOverlay {
+    /* Overlays */
+    #meetingOverlay, #roleReveal {
       position: absolute; inset: 0;
-      background: rgba(0,0,0,0.85);
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      z-index: 50; padding: 16px;
+      background: rgba(0,0,0,0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 20px;
     }
-    #meetingOverlay.active { display: flex; }
+    #meetingOverlay.active, #roleReveal.active { display: flex; }
+
     #voteList {
       display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
-      max-width: 400px; margin: 16px 0;
+      max-width: 380px; margin: 18px 0;
     }
     .vote-btn {
-      background: #21262d; border: 2px solid #30363d;
-      border-radius: 12px; padding: 10px 14px;
-      color: white; font-size: 14px; cursor: pointer;
+      background: #21262d;
+      border: 2px solid #30363d;
+      border-radius: 14px;
+      padding: 12px 16px;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
       display: flex; align-items: center; gap: 8px;
     }
-    .vote-btn.selected { border-color: #58a6ff; }
+    .vote-btn.selected { border-color: #58a6ff; background: #1f2937; }
 
-    /* Role reveal */
-    #roleReveal {
-      position: absolute; inset: 0;
-      background: #0d1117;
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      z-index: 60;
+    #roleText {
+      font-size: clamp(2.2rem, 10vw, 3.5rem);
+      font-weight: 900;
+      margin: 12px 0;
     }
-    #roleReveal.active { display: flex; }
-    #roleText { font-size: 2.5rem; font-weight: 800; margin: 12px 0; }
 
-    /* Toast */
     #toast {
-      position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
-      background: #238636; color: white; padding: 10px 20px;
-      border-radius: 8px; font-weight: 600; display: none; z-index: 100;
+      position: absolute;
+      top: 70px; left: 50%;
+      transform: translateX(-50%);
+      background: #238636;
+      color: white;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-weight: 700;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      white-space: nowrap;
     }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 10px 0;
+      width: min(280px, 90vw);
+      justify-content: space-between;
+    }
+    .slider-row label { font-size: 0.9rem; color: #8b949e; }
+    input[type=range] { width: 120px; accent-color: #58a6ff; }
 
     .hidden { display: none !important; }
   </style>
@@ -204,30 +257,38 @@
     <!-- MENU -->
     <div id="menuScreen" class="screen active">
       <h1>MYSN MURDER</h1>
-      <p class="subtitle">Among Us style • Same WiFi • Bots & Mobile ready</p>
-      <input id="playerName" placeholder="Your name" maxlength="12" value="" />
+      <p class="subtitle">Play from any phone • No computer needed</p>
+      <input id="playerName" placeholder="Your name" maxlength="12" autocomplete="off" />
       <button id="btnCreate">Create Room</button>
-      <div class="row" style="margin-top:12px">
-        <input id="joinCode" placeholder="Room code" maxlength="4" style="width:120px; text-transform:uppercase" />
-        <button id="btnJoin" class="secondary">Join</button>
+      <div class="row" style="margin-top:14px">
+        <input id="joinCode" placeholder="CODE" maxlength="4" style="width:110px; text-transform:uppercase; letter-spacing:3px" />
+        <button id="btnJoin" class="secondary" style="width:auto; padding:14px 20px">Join</button>
       </div>
+      <p style="margin-top:24px; font-size:0.8rem; color:#484f58">Works on the same WiFi or over the internet</p>
     </div>
 
     <!-- LOBBY -->
     <div id="lobbyScreen" class="screen">
-      <h1>Lobby</h1>
-      <p>Code: <strong id="roomCodeDisplay" style="font-size:1.6rem; letter-spacing:3px"></strong></p>
-      <p class="subtitle" id="shareInfo">Share this code + Network IP with friends</p>
+      <p style="color:#8b949e; font-size:0.9rem">Room Code</p>
+      <div class="code-big" id="roomCodeDisplay">----</div>
+      <p class="subtitle" id="shareInfo">Share this code with friends</p>
+
       <div id="lobbyPlayers"></div>
 
       <div id="hostControls" class="hidden">
-        <label>Bots to add: <span id="botCountLabel">3</span></label>
-        <input type="range" id="botSlider" min="0" max="8" value="3" style="width:200px" />
-        <label>Impostors: <span id="impLabel">1</span></label>
-        <input type="range" id="impSlider" min="1" max="3" value="1" style="width:200px" />
-        <button id="btnStart" style="margin-top:16px">Start Game</button>
+        <div class="slider-row">
+          <label>Bots</label>
+          <span id="botCountLabel">3</span>
+          <input type="range" id="botSlider" min="0" max="8" value="3" />
+        </div>
+        <div class="slider-row">
+          <label>Impostors</label>
+          <span id="impLabel">1</span>
+          <input type="range" id="impSlider" min="1" max="3" value="1" />
+        </div>
+        <button id="btnStart" style="margin-top:18px">Start Game</button>
       </div>
-      <p id="waitingText" class="subtitle">Waiting for host to start...</p>
+      <p id="waitingText" class="subtitle">Waiting for host...</p>
     </div>
 
     <!-- GAME -->
@@ -237,18 +298,15 @@
 
         <div id="hud">
           <div class="hud-box" id="taskList">
-            <strong>Tasks</strong>
+            <strong style="color:#58a6ff">Tasks</strong>
             <div id="tasksContent">—</div>
           </div>
           <div class="hud-box" id="roleBadge">Role: ???</div>
         </div>
 
-        <!-- Mobile Controls -->
         <div id="mobileControls">
           <div id="joystickZone">
-            <div id="joystickBase">
-              <div id="joystickKnob"></div>
-            </div>
+            <div id="joystickBase"><div id="joystickKnob"></div></div>
           </div>
           <div id="actionButtons">
             <button class="action-btn" id="btnKill">KILL</button>
@@ -258,36 +316,33 @@
           </div>
         </div>
 
-        <!-- Meeting -->
         <div id="meetingOverlay">
-          <h2 id="meetingReason">Emergency Meeting</h2>
-          <p id="meetingTimer">Discussion...</p>
+          <h2 id="meetingReason" style="margin-bottom:8px">Emergency Meeting</h2>
+          <p id="meetingTimer" style="color:#8b949e">Discussion...</p>
           <div id="voteList"></div>
-          <button id="btnSkip" class="secondary">Skip Vote</button>
+          <button id="btnSkip" class="secondary" style="width:auto; margin-top:8px">Skip Vote</button>
         </div>
 
-        <!-- Role reveal -->
         <div id="roleReveal">
-          <p>You are</p>
+          <p style="color:#8b949e">You are the</p>
           <div id="roleText">CREWMATE</div>
-          <p id="roleDesc">Complete tasks and find the murderer</p>
-          <button id="btnRoleOk" style="margin-top:24px">Got it</button>
+          <p id="roleDesc" style="color:#8b949e; max-width:280px">Complete tasks and find the murderer</p>
+          <button id="btnRoleOk" style="margin-top:28px; width:auto">Got it</button>
         </div>
 
         <div id="toast"></div>
       </div>
     </div>
 
-    <!-- GAME OVER -->
+    <!-- END -->
     <div id="endScreen" class="screen">
       <h1 id="endTitle">Victory</h1>
       <p id="endSubtitle" class="subtitle"></p>
-      <div id="endPlayers" style="margin:16px 0"></div>
-      <button id="btnBackMenu">Back to Menu</button>
+      <div id="endPlayers" style="margin:20px 0; max-height:200px; overflow-y:auto"></div>
+      <button id="btnBackMenu">Play Again</button>
     </div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
 </body>
 </html>
